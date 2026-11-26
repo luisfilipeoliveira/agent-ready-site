@@ -166,6 +166,25 @@ try {
     rmSync(orgDir, { recursive: true, force: true });
   }
 
+  // The build step goes inside dev and build (pnpm and Yarn 2+ skip pre scripts), once, and replaces old pre scripts.
+  const pkgDir = mkdtempSync(join(tmpdir(), "agent-ready-pkg-"));
+  try {
+    const step = "node agent-ready/build.mjs";
+    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ scripts: { dev: "vite", build: "vite build", predev: step, prebuild: `${step} && tsc` } }));
+    init(pkgDir, { framework: "vite" });
+    init(pkgDir, { framework: "vite" });
+    const { scripts } = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+    assert(
+      scripts.dev === `${step} && vite` && scripts.build === `${step} && vite build` && !("predev" in scripts) && scripts.prebuild === "tsc" && scripts["agent-ready"] === step,
+      "init puts the build step at the start of dev and build, once, without pre scripts",
+    );
+    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ devDependencies: { "@sveltejs/kit": "^2.0.0", vite: "^6.0.0" } }));
+    const svelte = init(pkgDir, {});
+    assert(svelte.framework === "sveltekit" && svelte.outDir === "static", "init detects SvelteKit and writes into static/");
+  } finally {
+    rmSync(pkgDir, { recursive: true, force: true });
+  }
+
   // JSON-LD as a source for site.json: @graph, @id references, the WebSite's publisher, contact points, sameAs.
   const ldHtml = `<html><head><script type="application/ld+json">${JSON.stringify({
     "@context": "https://schema.org",

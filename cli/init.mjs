@@ -81,18 +81,32 @@ function applyJsonLd(site, html, { type }, log) {
   else log.push(notes[0]);
 }
 
-/** Adds `node agent-ready/build.mjs` in front of the dev and build scripts, once. */
+/**
+ * Adds `node agent-ready/build.mjs` in front of the dev and build scripts, once. It goes inside the scripts
+ * themselves, not in predev/prebuild: pnpm and Yarn 2+ don't run pre scripts, so the build step would be skipped.
+ */
 function wireScripts(root, pkg, log) {
   if (!pkg) return log.push("No package.json: run `node agent-ready/build.mjs` before each deploy.");
   const scripts = (pkg.scripts ??= {});
   const step = "node agent-ready/build.mjs";
   scripts["agent-ready"] = step;
+  // Earlier versions of init used predev/prebuild: take the step out of them so it doesn't run twice.
   for (const name of ["predev", "prebuild"]) {
-    if (!scripts[name]) scripts[name] = step;
-    else if (!scripts[name].includes(step)) scripts[name] = `${step} && ${scripts[name]}`;
+    if (scripts[name] === step) delete scripts[name];
+    else if (scripts[name]?.startsWith(`${step} && `)) scripts[name] = scripts[name].slice(step.length + 4);
+  }
+  const wired = [];
+  for (const name of ["dev", "build"]) {
+    if (!scripts[name]) continue;
+    if (!scripts[name].includes(step)) scripts[name] = `${step} && ${scripts[name]}`;
+    wired.push(`\`${name}\``);
   }
   writeFileSync(join(root, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
-  log.push("package.json: added `agent-ready`, and the build step before `dev` and `build`.");
+  log.push(
+    wired.length
+      ? `package.json: added \`agent-ready\`, and the build step at the start of ${wired.join(" and ")}.`
+      : "package.json: added `agent-ready`. There is no `dev` or `build` script: run `npm run agent-ready` before each deploy.",
+  );
 }
 
 function nextProxy(root, srcDir, log) {

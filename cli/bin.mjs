@@ -8,7 +8,7 @@ import { check } from "./check.mjs";
 const HELP = `agent-ready-site: make a website readable by AI agents.
 
 Usage
-  agent-ready-site init [--type person|organization] [--name "Jane Doe"] [--handle jane] [--url https://example.com] [--out public] [--framework nextjs|astro|vite|static] [--jsonld <file or URL>] [--force]
+  agent-ready-site init [--type person|organization] [--name "Jane Doe"] [--handle jane] [--url https://example.com] [--out public] [--framework nextjs|astro|sveltekit|vite|static] [--jsonld <file or URL>] [--force]
       Scaffold agent-ready/ in the current site and wire the build step.
       --jsonld fills site.json from the JSON-LD in a page (an HTML file, a .json file, or the running site's URL);
       on an existing site.json it only fills fields that are still empty or placeholders.
