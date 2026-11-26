@@ -8,4 +8,4 @@ The CLI is `cli/bin.mjs` in this repository (`node <path-to-this-repo>/cli/bin.m
 `npx agent-ready-site init` once it is published.
 
 If you are working on this repository itself: run `npm test` and `npm run privacy` before committing. Every
-example, fixture and template uses placeholder content only (Jane Doe, example.com).
+example, fixture and template uses placeholder content only (Example Bikes, Jane Doe, example.com).

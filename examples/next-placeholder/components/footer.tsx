@@ -1,7 +1,7 @@
 export function Footer() {
   return (
     <footer>
-      <span>Jane Doe, product designer</span>
+      <span>Example Bikes, bike shop</span>
       <a href="mailto:hello@example.com">hello@example.com</a>
     </footer>
   );

@@ -1,25 +1,27 @@
 {
-  "name": "Jane Doe",
-  "headline": "Product designer who turns messy checkout and onboarding flows into products people finish.",
-  "summary": "Twelve years designing digital products, mostly commerce and fintech.",
+  "type": "organization",
+  "name": "Example Bikes",
+  "headline": "Bike shop that sells, fits and repairs city, road and electric bikes.",
+  "summary": "An independent bike shop with two stores, a workshop and a fitting studio.",
   "url": "https://luisfilipeoliveira.github.io/agent-ready-site/demo",
   "updated": "2026-01-31",
-  "readingPreference": "Jane would rather AI tools use the Markdown files than the HTML pages. This is a preference only; robots.txt blocks nothing.",
+  "readingPreference": "Example Bikes would rather AI tools use the Markdown files than the HTML pages. This is a preference only; robots.txt blocks nothing.",
   "contact": {
-    "email": "hello@example.com"
+    "email": "hello@example.com",
+    "shop": "1 Example Street, Sample Town"
   },
   "pages": [
     {
       "title": "About",
-      "summary": "I have designed digital products for twelve years, mostly commerce and fintech.",
+      "summary": "We have sold and repaired bikes in Sample Town since 2014.",
       "url": "https://luisfilipeoliveira.github.io/agent-ready-site/demo/about",
       "markdown": "https://luisfilipeoliveira.github.io/agent-ready-site/demo/about.md"
     },
     {
-      "title": "Atlas checkout",
-      "summary": "A one-page checkout for a mid-size online shop.",
-      "url": "https://luisfilipeoliveira.github.io/agent-ready-site/demo/work/atlas-checkout",
-      "markdown": "https://luisfilipeoliveira.github.io/agent-ready-site/demo/work/atlas-checkout.md"
+      "title": "Bike fitting",
+      "summary": "A one-hour fitting that sets a bike up around its rider.",
+      "url": "https://luisfilipeoliveira.github.io/agent-ready-site/demo/services/bike-fitting",
+      "markdown": "https://luisfilipeoliveira.github.io/agent-ready-site/demo/services/bike-fitting.md"
     }
   ],
   "files": [
@@ -28,7 +30,7 @@
     "https://luisfilipeoliveira.github.io/agent-ready-site/demo/llms-full.txt",
     "https://luisfilipeoliveira.github.io/agent-ready-site/demo/profile.json",
     "https://luisfilipeoliveira.github.io/agent-ready-site/demo/about.md",
-    "https://luisfilipeoliveira.github.io/agent-ready-site/demo/work/atlas-checkout.md",
+    "https://luisfilipeoliveira.github.io/agent-ready-site/demo/services/bike-fitting.md",
     "https://luisfilipeoliveira.github.io/agent-ready-site/demo/agents"
   ]
 }

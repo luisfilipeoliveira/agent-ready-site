@@ -1,24 +1,30 @@
-# Jane Doe
+# Example Bikes
 
-> Product designer who turns messy checkout and onboarding flows into products people finish.
+> Bike shop that sells, fits and repairs city, road and electric bikes.
 
 Format: https://llmstxt.org. Below is the text of the home page (https://luisfilipeoliveira.github.io/agent-ready-site/demo), mirrored at https://luisfilipeoliveira.github.io/agent-ready-site/demo/llm.md, followed by links to a Markdown copy of each other page.
 
-- Reading preference: Jane would rather AI tools use the Markdown files than the HTML pages. This is a preference only; robots.txt blocks nothing.
+- Reading preference: Example Bikes would rather AI tools use the Markdown files than the HTML pages. This is a preference only; robots.txt blocks nothing.
 - Updated: 2026-01-31
 
-## Selected work
+## Bikes we sell
 
-- [Atlas checkout](https://example.com/work/atlas-checkout.md): a one-page checkout that lifted completed orders by 18%.
+- City bikes for the daily commute.
+- Road bikes for longer rides.
+- Electric bikes for hills and heavy loads.
 
-## Clients
+## Services
 
-Client One, Client Two, Client Three.
+- [Bike fitting](https://example.com/services/bike-fitting.md): a one-hour fitting that sets a bike up around its rider.
+
+## Brands we stock
+
+Brand One, Brand Two, Brand Three.
 
 ## Pages
 
-- [About](https://luisfilipeoliveira.github.io/agent-ready-site/demo/about.md): I have designed digital products for twelve years, mostly commerce and fintech.
-- [Atlas checkout](https://luisfilipeoliveira.github.io/agent-ready-site/demo/work/atlas-checkout.md): A one-page checkout for a mid-size online shop.
+- [About](https://luisfilipeoliveira.github.io/agent-ready-site/demo/about.md): We have sold and repaired bikes in Sample Town since 2014.
+- [Bike fitting](https://luisfilipeoliveira.github.io/agent-ready-site/demo/services/bike-fitting.md): A one-hour fitting that sets a bike up around its rider.
 
 ## Files
 
@@ -27,7 +33,7 @@ Client One, Client Two, Client Three.
 - [/llms-full.txt](https://luisfilipeoliveira.github.io/agent-ready-site/demo/llms-full.txt): The index and every page copy, joined into a single file.
 - [/profile.json](https://luisfilipeoliveira.github.io/agent-ready-site/demo/profile.json): Name, headline, pages and contact as JSON.
 - [/about.md](https://luisfilipeoliveira.github.io/agent-ready-site/demo/about.md): Markdown copy of the About page.
-- [/work/atlas-checkout.md](https://luisfilipeoliveira.github.io/agent-ready-site/demo/work/atlas-checkout.md): Markdown copy of the Atlas checkout page.
+- [/services/bike-fitting.md](https://luisfilipeoliveira.github.io/agent-ready-site/demo/services/bike-fitting.md): Markdown copy of the Bike fitting page.
 - [/agents](https://luisfilipeoliveira.github.io/agent-ready-site/demo/agents): A human-readable view of these files.
 
 ---
@@ -36,45 +42,46 @@ Client One, Client Two, Client Three.
 
 Source: https://luisfilipeoliveira.github.io/agent-ready-site/demo/about
 
-> I have designed digital products for twelve years, mostly commerce and fintech.
+> We have sold and repaired bikes in Sample Town since 2014.
 
-## How I work
+## How we work
 
-- Start from the numbers the business already watches.
-- Prototype early, test with five people, repeat.
+- Every bike gets a test ride before you buy it.
+- Repairs have fixed prices, agreed before we start.
 
-## Experience
+## Shops
 
-### Example Company
+### Example Bikes Centre
 
-Lead Product Designer, 2021 to now.
+Sales, workshop and fitting studio, 2014 to now.
 
-### Sample Studio
+### Example Bikes Riverside
 
-Product Designer, 2016 to 2021.
+Sales and quick repairs, 2020 to now.
 
 ---
 
-# Atlas checkout
+# Bike fitting
 
-Source: https://luisfilipeoliveira.github.io/agent-ready-site/demo/work/atlas-checkout
+Source: https://luisfilipeoliveira.github.io/agent-ready-site/demo/services/bike-fitting
 
-> A one-page checkout for a mid-size online shop.
+> A one-hour fitting that sets a bike up around its rider.
 
 ## Problem
 
-Four steps and a forced sign-up lost a third of buyers between cart and payment.
+Riders on a badly set-up bike get sore knees and backs, and stop riding after a few weeks.
 
-## What we did
+## What we do
 
-One page, guest checkout first, address lookup and saved cards.
+We measure the rider, adjust saddle, bars and cleats, and check the result on a short ride.
 
 ## Outcome
 
-Completed orders rose 18% in the first quarter.
+Nine in ten riders we fit come back for the yearly check.
 
 ---
 
 ## Contact
 
 - Email: hello@example.com
+- Shop: 1 Example Street, Sample Town

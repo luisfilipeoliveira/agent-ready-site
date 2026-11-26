@@ -2,23 +2,24 @@
 
 Source: https://luisfilipeoliveira.github.io/agent-ready-site/demo/about
 
-> I have designed digital products for twelve years, mostly commerce and fintech.
+> We have sold and repaired bikes in Sample Town since 2014.
 
-## How I work
+## How we work
 
-- Start from the numbers the business already watches.
-- Prototype early, test with five people, repeat.
+- Every bike gets a test ride before you buy it.
+- Repairs have fixed prices, agreed before we start.
 
-## Experience
+## Shops
 
-### Example Company
+### Example Bikes Centre
 
-Lead Product Designer, 2021 to now.
+Sales, workshop and fitting studio, 2014 to now.
 
-### Sample Studio
+### Example Bikes Riverside
 
-Product Designer, 2016 to 2021.
+Sales and quick repairs, 2020 to now.
 
 ## Contact
 
 - Email: hello@example.com
+- Shop: 1 Example Street, Sample Town
