@@ -11,8 +11,12 @@ export function addPointers(dir, site) {
   const profile = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
   // In a multilingual site each page also links its translations' copies (hreflang), and its footer links the
   // /agents page of its own language.
-  const prefixes = (profile.languages ?? []).map((l) => new URL(l.llms).pathname.replace(/\/llms\.txt$/, "").slice(base.length)).filter(Boolean);
-  const prefixOf = (path) => prefixes.find((p) => path === p || path.startsWith(p + "/")) ?? "";
+  // The language of each page and home comes from profile.json, not from its URL: a site's root can be in a
+  // further language (/ and /sobre in Portuguese, /en in English).
+  const local = (url) => new URL(url).pathname.slice(base.length).replace(/(.)\/+$/, "$1") || "/";
+  const prefixByLanguage = new Map((profile.languages ?? []).map((l) => [l.language, new URL(l.llms).pathname.replace(/\/llms\.txt$/, "").slice(base.length)]));
+  const languageOf = new Map([...(profile.pages ?? []).map((p) => [local(p.url), p.language]), ...(profile.languages ?? []).map((l) => [local(l.home), l.language])]);
+  const prefixOf = (path) => prefixByLanguage.get(languageOf.get(path)) ?? "";
   const alternates = new Map(
     (profile.pages ?? []).map((p) => [new URL(p.url).pathname.slice(base.length) || "/", Object.entries(p.alternates ?? {}).map(([lang, a]) => [lang, new URL(a.markdown).pathname])]),
   );

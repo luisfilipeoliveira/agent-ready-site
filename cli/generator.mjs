@@ -16,6 +16,7 @@
  *                                       /sobre with markdown: /about -> about.md)
  *          agents/index.html            the /agents page: the files as a terminal session in an editor window
  *          <prefix>/llms.txt, …         for each further language: its own index, full file and /agents page
+ *                                       (each language's home is its prefix, or site.json "home" / i18n.<lang>.home)
  *          and agent-ready/markdown-map.json  page path -> Markdown copy, for Accept: text/markdown rewrites
  *
  * Every word comes from site.json and the page files, which hold only what the site itself says.
@@ -112,12 +113,23 @@ export function loadContent(root) {
     if (!isDefault && !/^\/[A-Za-z0-9._~-]+(\/[A-Za-z0-9._~-]+)*$/.test(prefix))
       throw new Error(`agent-ready/site.json: the prefix for "${lang}" must be a plain path like /pt.`);
     const all = readPages(isDefault ? pagesDir : join(pagesDir, lang), isDefault ? "agent-ready/pages" : `agent-ready/pages/${lang}`);
-    const homePath = prefix || "/";
+    // The language's home page URL. By default the site root for English and the prefix for the others; a site
+    // whose root is in another language sets "home" (English, e.g. /en) and i18n.<lang>.home (e.g. /).
+    const ownHome = isDefault ? site.home : own.home;
+    const homePath = ownHome == null ? prefix || "/" : "/" + String(ownHome).replace(/^\/+|\/+$/g, "");
+    if (!/^\/[A-Za-z0-9._~\-/]*$/.test(homePath) || homePath.split("/").some((seg) => seg === "." || seg === ".."))
+      throw new Error(`agent-ready/site.json: the home for "${lang}" must be a plain site path like / or /en, not "${ownHome}".`);
     const home = all.find((page) => page.path === homePath);
     for (const page of all) page.language = lang;
-    const { i18n, languages: _, prefix: __, languageName: name, ...rest } = { ...site, ...own };
-    return { site: { ...rest, language: lang }, lang, name: languageName(lang, name), prefix, isDefault, home, pages: all.filter((page) => page !== home) };
+    const { i18n, languages: _, prefix: __, languageName: name, home: ___, ...rest } = { ...site, ...own };
+    return { site: { ...rest, language: lang }, lang, name: languageName(lang, name), prefix, homePath, isDefault, home, pages: all.filter((page) => page !== home) };
   });
+
+  // One home per language: two languages can't share one.
+  for (const l of languages) {
+    const other = languages.find((o) => o !== l && o.homePath === l.homePath);
+    if (other) throw new Error(`agent-ready/site.json: ${l.lang} and ${other.lang} both have their home page at ${l.homePath}. Set "home" (English) or i18n.<lang>.home so each language has its own.`);
+  }
 
   // One URL, one copy: two languages can't claim the same path.
   const seen = new Map();
@@ -220,12 +232,13 @@ function languageSections(content) {
 }
 
 export function buildLlmsTxt(content, { withContact = true } = {}) {
-  const { site, home, pages, prefix = "" } = content;
+  const { site, home, pages, prefix = "", homePath = prefix || "/" } = content;
+  const homeUrl = `${site.url}${homePath === "/" ? "" : homePath}`;
   const titles = sectionTitles(site);
   return doc(
     `# ${site.name}`,
     `> ${site.headline}`,
-    `Format: https://llmstxt.org. Below is the text of the home page (${site.url}${prefix}), mirrored at ${site.url}${prefix}/llm.md, followed by links to a Markdown copy of each other page.`,
+    `Format: https://llmstxt.org. Below is the text of the home page (${homeUrl}), mirrored at ${site.url}${prefix}/llm.md, followed by links to a Markdown copy of each other page.`,
     list(
       [site.readingPreference && `Reading preference: ${site.readingPreference}`, site.updated && `Updated: ${site.updated}`].filter(Boolean),
     ),
@@ -287,7 +300,7 @@ export function buildProfileJson(content) {
           languages: content.languages.map((l) => ({
             language: l.lang,
             name: l.name,
-            home: `${site.url}${l.prefix || "/"}`,
+            home: `${site.url}${l.homePath}`,
             llms: `${site.url}${l.prefix}/llms.txt`,
             headline: l.site.headline,
           })),
@@ -303,7 +316,7 @@ export function buildMarkdownMap(content) {
   const map = {};
   for (const l of content.languages ?? [content]) {
     const prefix = l.prefix ?? "";
-    map[prefix || "/"] = `${prefix}/llms.txt`;
+    map[l.homePath ?? (prefix || "/")] = `${prefix}/llms.txt`;
     map[`${prefix}/agents`] = `${prefix}/llms.txt`;
     for (const p of l.pages) map[p.path] = mdPath(p);
   }
@@ -452,7 +465,8 @@ export function buildAgentsHtml(content, sizes) {
   // Sites served under a sub-path (e.g. https://user.github.io/repo): every site-relative link gets that prefix.
   const base = new URL(site.url).pathname.replace(/\/+$/, "");
   const prefix = content.prefix ?? "";
-  const home = `${base}${prefix}/`;
+  const homePath = content.homePath ?? (prefix || "/");
+  const home = `${base}${homePath === "/" ? "" : homePath}/`;
 
   const blocks = [
     { command: "whoami", output: [`<h1>${esc(title)}</h1>`, `<p>${esc(lead)}</p>`] },
