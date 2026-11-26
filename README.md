@@ -48,6 +48,10 @@ The content comes only from your site. The agent reads your pages (or the data f
 one Markdown file per page in `agent-ready/pages/`. A tiny generator with no dependencies turns those files into
 everything above on every build.
 
+Pages that come from data, such as a product catalogue or a blog, don't need a file each: a **collection** in
+`site.json` points at the JSON and one Markdown template, and the build writes a copy per item. `/llms.txt` groups
+the copies into sections (`## Products`, `## Posts`, `## Policies`) the way the site is organised.
+
 ## Install
 
 ### With Claude Code (recommended)
@@ -98,6 +102,7 @@ The spec and the recipes for each framework are in
 agent-ready/
   site.json        name, handle, URL, contact, /agents copy, optional theme
   pages/*.md       one Markdown copy per public page (you or your agent keep these current)
+  templates/*.md   optional: one template per collection (product, post…), filled from your data
   build.mjs        the generator (runs before dev and build)
   markdown-map.json, .generated.json   written by the generator
 public/            llms.txt, llm.md, llms-full.txt, profile.json, the .md copies, agents/index.html

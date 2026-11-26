@@ -3,8 +3,9 @@
  * agent-ready-site generator. Self-contained (Node 18+, no dependencies): `init` copies this file into the
  * site as agent-ready/build.mjs and wires it to the site's dev/build scripts.
  *
- * Reads:   agent-ready/site.json        the site's name, handle, URL, contact, /agents copy
- *          agent-ready/pages/*.md       one Markdown copy per public page (frontmatter: path, title, summary, order)
+ * Reads:   agent-ready/site.json        the site's name, handle, URL, contact, /agents copy, collections
+ *          agent-ready/pages/*.md       one Markdown copy per public page (frontmatter: path, title, summary, section, order)
+ *          collections                  a JSON data file + a Markdown template: one copy per item (products, posts…)
  * Writes (into site.json "outDir", default "public"):
  *          llms.txt, llm.md             index in llmstxt.org format: home text, then a link to each copy
  *          llms-full.txt                everything in one file
@@ -36,7 +37,100 @@ export function parseFrontmatter(text) {
   return { data, body: match[2].trim() };
 }
 
+/** A page path from frontmatter or a collection: plain URL characters only, no "." or ".." segments (it becomes a file name). */
+function pagePath(raw, where) {
+  const path = raw === "/" ? "/" : "/" + String(raw).replace(/^\/+|\/+$/g, "");
+  if (!/^\/[A-Za-z0-9._~\-/]*$/.test(path) || path === "/." || path.split("/").some((seg) => seg === "." || seg === ".."))
+    throw new Error(`${where}: path "${raw}" must be a plain site path like /about or /work/case`);
+  return path;
+}
+
+// ---------- collections: one page per item of a data file, through a Markdown template ----------
+
+const PLACEHOLDER = /\{\{\s*(?:(list|join)\s+)?([A-Za-z0-9_$-]+(?:\.[A-Za-z0-9_$-]+)*)\s*\}\}/g;
+
+function lookup(item, key) {
+  return key.split(".").reduce((value, part) => (value == null ? undefined : value[part]), item);
+}
+
+function renderValue(value, helper) {
+  if (value == null || value === "") return "";
+  if (Array.isArray(value)) {
+    const items = value.filter((v) => v != null && v !== "" && typeof v !== "object").map(String);
+    return helper === "list" ? items.map((v) => `- ${v}`).join("\n") : items.join(", ");
+  }
+  if (typeof value === "object") return "";
+  return String(value);
+}
+
+/**
+ * Fills `{{key}}`, `{{nested.key}}`, `{{join key}}` (an array as "a, b, c") and `{{list key}}` (an array as a
+ * "- " list). A line whose placeholders all come out empty is dropped, so optional fields leave no "Price: ".
+ */
+export function renderTemplate(template, item) {
+  const lines = template.split("\n").flatMap((line) => {
+    let placeholders = 0;
+    let filled = 0;
+    const out = line.replace(PLACEHOLDER, (_, helper, key) => {
+      placeholders++;
+      const value = renderValue(lookup(item, key), helper);
+      if (value) filled++;
+      return value;
+    });
+    return placeholders && !filled ? [] : [out];
+  });
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** One-line fields (path, title, summary): no line dropping. With `strict`, an empty placeholder is an error. */
+function fillLine(template, item, strict) {
+  return template.replace(PLACEHOLDER, (whole, helper, key) => {
+    const value = renderValue(lookup(item, key), helper);
+    if (!value && strict) throw new Error(`${whole} is empty`);
+    return value;
+  });
+}
+
+function loadCollection(root, collection, index) {
+  const where = `agent-ready/site.json collections[${index}]${collection?.name ? ` ("${collection.name}")` : ""}`;
+  for (const key of ["name", "source", "path", "title", "template"])
+    if (!collection?.[key]) throw new Error(`${where} needs "${key}".`);
+  const inside = (file, label) => {
+    const target = resolve(root, file);
+    if (!target.startsWith(root + sep)) throw new Error(`${where}: ${label} "${file}" must be inside the site's folder.`);
+    if (!existsSync(target)) throw new Error(`${where}: ${label} "${file}" does not exist.`);
+    return target;
+  };
+  const data = JSON.parse(readFileSync(inside(collection.source, "source"), "utf8"));
+  const items = Array.isArray(data) ? data : data?.items;
+  if (!Array.isArray(items)) throw new Error(`${where}: source must be a JSON array, or an object with an "items" array.`);
+  const template = readFileSync(inside(collection.template, "template"), "utf8").trim();
+  const order = collection.order ?? 100;
+  return items.map((item, i) => {
+    let raw;
+    let title;
+    try {
+      raw = fillLine(collection.path, item, true);
+      title = fillLine(collection.title, item, true).trim();
+    } catch (error) {
+      throw new Error(`${where} item ${i}: ${error.message} (path and title need every field they use).`);
+    }
+    return {
+      file: `${collection.name}[${i}]`,
+      collection: collection.name,
+      path: pagePath(raw, `${where} item ${i}`),
+      title,
+      summary: collection.summary ? fillLine(collection.summary, item, false).trim() : "",
+      section: collection.section ?? collection.name,
+      order: order + i / (items.length + 1),
+      full: collection.full !== false,
+      body: renderTemplate(template, item),
+    };
+  });
+}
+
 export function loadContent(root) {
+  root = resolve(root);
   const dir = join(root, "agent-ready");
   const sitePath = join(dir, "site.json");
   if (!existsSync(sitePath)) throw new Error(`Missing ${relative(process.cwd(), sitePath)}. Run \`agent-ready-site init\` first.`);
@@ -46,22 +140,41 @@ export function loadContent(root) {
   }
   site.url = site.url.replace(/\/+$/, "");
   const pagesDir = join(dir, "pages");
-  const pages = existsSync(pagesDir)
+  const written = existsSync(pagesDir)
     ? readdirSync(pagesDir)
         .filter((file) => file.endsWith(".md"))
         .map((file) => {
           const { data, body } = parseFrontmatter(readFileSync(join(pagesDir, file), "utf8"));
           if (!data.path || !data.title) throw new Error(`agent-ready/pages/${file} needs "path" and "title" in its frontmatter.`);
-          const path = data.path === "/" ? "/" : "/" + String(data.path).replace(/^\/+|\/+$/g, "");
-          // The path becomes a file name: plain URL characters only, no "." or ".." segments.
-          if (!/^\/[A-Za-z0-9._~\-/]*$/.test(path) || path.split("/").some((seg) => seg === "." || seg === ".."))
-            throw new Error(`agent-ready/pages/${file}: path "${data.path}" must be a plain site path like /about or /work/case`);
-          return { file, path, title: data.title, summary: data.summary ?? "", order: data.order ?? 100, body };
+          const path = pagePath(data.path, `agent-ready/pages/${file}`);
+          return { file, path, title: data.title, summary: data.summary ?? "", section: data.section ?? "", order: data.order ?? 100, full: true, body };
         })
-        .sort((a, b) => a.order - b.order || a.path.localeCompare(b.path))
     : [];
+  const collected = (site.collections ?? []).flatMap((collection, i) => loadCollection(root, collection, i));
+  const pages = [...written, ...collected].sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
+  const seen = new Map();
+  for (const page of pages) {
+    if (seen.has(page.path)) throw new Error(`Two pages have the path ${page.path}: ${seen.get(page.path)} and ${page.file}.`);
+    seen.set(page.path, page.file);
+  }
+  if (collected.some((page) => page.path === "/")) throw new Error("A collection can't produce the home page (path /).");
   const home = pages.find((page) => page.path === "/");
   return { site, home, pages: pages.filter((page) => page.path !== "/") };
+}
+
+/**
+ * Pages grouped into llms.txt sections (`## Products`, `## Policies`, …). Pages without a section go under
+ * `site.pagesTitle` (default "Pages"). Sections follow `site.sections` first, then the order of their first page.
+ */
+export function pageSections({ site, pages }) {
+  const fallback = site.pagesTitle ?? "Pages";
+  const groups = new Map((site.sections ?? []).map((name) => [name, []]));
+  for (const page of pages) {
+    const name = page.section || fallback;
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(page);
+  }
+  return [...groups].filter(([, list]) => list.length).map(([title, list]) => ({ title, pages: list }));
 }
 
 // ---------- Markdown ----------
@@ -71,13 +184,26 @@ const section = (title, ...body) => [`## ${title}`, ...body.filter(Boolean)].joi
 const doc = (...parts) => parts.filter((part) => part).join("\n\n") + "\n";
 const mdPath = (page) => `${page.path}.md`;
 
+/** A collection's copies as one entry ("/products/*.md"), so a catalogue of hundreds doesn't flood the file list. */
+function collectionEntries(site, pages) {
+  return (site.collections ?? []).flatMap((collection) => {
+    const items = pages.filter((page) => page.collection === collection.name);
+    if (!items.length) return [];
+    const glob = collection.path.replace(PLACEHOLDER, "*").replace(/\/+$/, "");
+    const label = collection.section ?? collection.name;
+    return [{ path: `${glob.startsWith("/") ? "" : "/"}${glob}.md`, description: `Markdown copy of each of the ${items.length} ${label} pages.` }];
+  });
+}
+
 export function agentFiles({ site, pages }) {
+  const anyLeftOut = pages.some((page) => !page.full);
   return [
     { path: "/llms.txt", description: "The entry point: the home page, a link to each page copy, and contact details." },
     { path: "/llm.md", description: "An alias of /llms.txt for tools that look for this name." },
-    { path: "/llms-full.txt", description: "The index and every page copy, joined into a single file." },
+    { path: "/llms-full.txt", description: anyLeftOut ? "The index and the main page copies, joined into a single file." : "The index and every page copy, joined into a single file." },
     { path: "/profile.json", description: "Name, headline, pages and contact as JSON." },
-    ...pages.map((page) => ({ path: mdPath(page), description: `Markdown copy of the ${page.title} page.` })),
+    ...pages.filter((page) => !page.collection).map((page) => ({ path: mdPath(page), description: `Markdown copy of the ${page.title} page.` })),
+    ...collectionEntries(site, pages),
     ...(site.extraFiles ?? []),
     { path: "/agents", description: "A human-readable view of these files." },
   ];
@@ -98,7 +224,9 @@ export function buildLlmsTxt(content, { withContact = true } = {}) {
       [site.readingPreference && `Reading preference: ${site.readingPreference}`, site.updated && `Updated: ${site.updated}`].filter(Boolean),
     ),
     home?.body ?? "",
-    pages.length ? section("Pages", list(pages.map((p) => `[${p.title}](${site.url}${mdPath(p)})${p.summary ? `: ${p.summary}` : ""}`))) : "",
+    ...pageSections(content).map((group) =>
+      section(group.title, list(group.pages.map((p) => `[${p.title}](${site.url}${mdPath(p)})${p.summary ? `: ${p.summary}` : ""}`))),
+    ),
     section("Files", list(agentFiles(content).map((f) => `[${f.path}](${site.url}${f.path}): ${f.description}`))),
     withContact ? contact(content) : "",
   );
@@ -117,7 +245,7 @@ export function buildPageMd(content, page, { withContact = true } = {}) {
 
 export function buildLlmsFullTxt(content) {
   const parts = [buildLlmsTxt(content, { withContact: false }).trim()];
-  for (const page of content.pages) parts.push("---", buildPageMd(content, page, { withContact: false }).trim());
+  for (const page of content.pages.filter((p) => p.full)) parts.push("---", buildPageMd(content, page, { withContact: false }).trim());
   const c = contact(content);
   if (c) parts.push("---", c);
   return doc(...parts);
@@ -136,7 +264,13 @@ export function buildProfileJson(content) {
     ...(site.updated ? { updated: site.updated } : {}),
     ...(site.readingPreference ? { readingPreference: site.readingPreference } : {}),
     contact: Object.fromEntries((site.contact ?? []).map((c) => [c.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"), c.value])),
-    pages: pages.map((p) => ({ title: p.title, summary: plain(p.summary), url: `${site.url}${p.path}`, markdown: `${site.url}${mdPath(p)}` })),
+    pages: pages.map((p) => ({
+      title: p.title,
+      summary: plain(p.summary),
+      ...(p.section ? { section: p.section } : {}),
+      url: `${site.url}${p.path}`,
+      markdown: `${site.url}${mdPath(p)}`,
+    })),
     ...(site.profile ? site.profile : {}),
     files: agentFiles(content).map((f) => `${site.url}${f.path}`),
   };

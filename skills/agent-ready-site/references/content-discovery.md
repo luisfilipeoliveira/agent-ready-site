@@ -10,7 +10,7 @@ Work out where the words come from before you write any Markdown. Try these in o
    - Static: every `index.html` / `*.html`.
 
    Then check `sitemap.xml` / `sitemap.ts` for anything you missed. Leave out: 404, legal pages unless the owner wants them, `/api`, admin, preview and draft routes, password-protected pages, and pages marked `noindex`.
-2. **Data files.** Many sites keep their copy in `lib/`, `data/`, `content/` or `src/data/` (TS/JSON/YAML), and the pages only render it. Read those files and use them as the source, keeping the page's order.
+2. **Data files.** Many sites keep their copy in `lib/`, `data/`, `content/` or `src/data/` (TS/JSON/YAML), and the pages only render it. Read those files and use them as the source, keeping the page's order. When one template renders many items from them (`/products/[slug]`, `/blog/[slug]`), that's a collection (`references/spec.md`): note the route, the data file and the fields the page shows.
 3. **MDX / Markdown content.** Content collections (`src/content/**`), `posts/*.mdx`, and so on. Use the rendered text: drop component tags, but keep the words they show.
 4. **CMS.** If content comes from a CMS at build time, don't call its API. Build and run the site, then use step 5.
 5. **Rendered HTML (fallback).** Build and start the site, fetch each page and take the text of `<main>` (or `<body>` without the nav and footer). Use this to check the other sources too: the Markdown must match what a visitor sees.

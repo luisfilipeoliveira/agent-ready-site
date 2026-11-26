@@ -4,7 +4,7 @@
 
 | URL | Content | Type |
 | --- | --- | --- |
-| `/llms.txt` | Index in the [llms.txt](https://llmstxt.org) format: `# Name`, `> headline`, reading preference, the home page's content, a `## Pages` list linking every copy, a `## Files` list and contact | text/plain or text/markdown |
+| `/llms.txt` | Index in the [llms.txt](https://llmstxt.org) format: `# Name`, `> headline`, reading preference, the home page's content, the page copies grouped into sections (`## Pages` by default, or `## Products`, `## Policies`, …), a `## Files` list and contact | text/plain or text/markdown |
 | `/llm.md` | The same as `/llms.txt` (some agents ask for this name) | text/markdown |
 | `/llms-full.txt` | `/llms.txt` plus every page copy, separated by `---`, with contact once at the end | text/plain |
 | `/profile.json` | The site's public details as JSON: name, headline, summary, location, contact, pages (url and markdown), files, plus anything in `site.profile` | application/json |
@@ -34,11 +34,51 @@ It also writes `agent-ready/markdown-map.json` (page path → copy, used by the 
   "agentsPage": { "title": "...", "lead": "...", "readme": ["optional lines"], "metaTitle": "...", "description": "..." },
   "theme": { "light": { "background": "oklch(1 0 0)", "foreground": "oklch(0.147 0.004 49.25)", "primary": "oklch(0.216 0.006 56.043)" }, "dark": { "border": "oklch(1 0 0 / 10%)" }, "radius": "0.45rem", "fontSans": "Inter, system-ui, sans-serif", "fontMono": "ui-monospace, monospace" },
   "extraFiles": [{ "path": "/sitemap.xml", "description": "Every page of the site." }],
-  "profile": { "any": "extra structured data to merge into profile.json" }
+  "profile": { "any": "extra structured data to merge into profile.json" },
+  "sections": ["Products", "Pages", "Policies"],
+  "pagesTitle": "Pages",
+  "collections": [
+    {
+      "name": "products",
+      "section": "Products",
+      "source": "data/products.json",
+      "template": "agent-ready/templates/product.md",
+      "path": "/products/{{slug}}",
+      "title": "{{name}}",
+      "summary": "{{tagline}} ({{join platforms}})",
+      "order": 20,
+      "full": true
+    }
+  ]
 }
 ```
 
 The required fields are `name`, `handle`, `url` and `headline`.
+
+`sections` is optional: the order of the `##` groups in `/llms.txt`. Sections it doesn't name follow in the order of their first page. Pages without a `section` go under `pagesTitle` (default `Pages`). A section called `Optional` follows the llms.txt convention: agents short on context may skip it.
+
+### Collections
+
+Use a collection when many pages share one template and their content lives in a data file (products, posts, talks, case studies). Each item of the source becomes a page copy, so the copies never drift from the data.
+
+| Field | Required | What it is |
+| --- | --- | --- |
+| `name` | yes | An id for the collection |
+| `source` | yes | A JSON file inside the site's folder: an array of items, or an object with an `items` array. If the data is in TS, a CMS or a database, add a script that exports it to JSON before the build and point here |
+| `template` | yes | A Markdown file for the body of each copy |
+| `path` | yes | The page's URL, e.g. `/products/{{slug}}`. Must match the HTML page's URL |
+| `title` | yes | e.g. `{{name}}` |
+| `summary` | no | The one-line entry in `/llms.txt`, e.g. `{{tagline}} ({{join platforms}})` |
+| `section` | no | The `/llms.txt` section (default: `name`) |
+| `order` | no | Where the collection sits among the pages (default 100); items keep the source's order |
+| `full` | no | `false` keeps the copies out of `/llms-full.txt` (for very large collections) |
+
+Placeholders, in the template and in `path`, `title` and `summary`:
+- `{{key}}` and `{{nested.key}}`: a value from the item.
+- `{{join key}}`: an array as `a, b, c`.
+- `{{list key}}`: an array as a `- ` list, one item per line.
+
+In the template, a line whose placeholders are all empty is dropped, so `Price: {{price}}` disappears for an item without a price. In `path` and `title`, an empty placeholder is an error. The file list in `/llms.txt` and `/agents` shows a collection as one entry (`/products/*.md`); `/llms.txt` still links every copy.
 
 `theme` is optional. `/agents` ships with a neutral default (oklch palette, `0.45rem` radius, system fonts). Any of these tokens can be overridden in `theme.light` / `theme.dark`: `background`, `foreground`, `card`, `cardForeground`, `primary`, `primaryForeground`, `muted`, `mutedForeground`, `border`, `ring`. They use the same names as a shadcn/ui `:root` and `.dark`, so a site built with it can copy its own values straight in. Values must be plain colours (hex, rgb, hsl, oklch). `radius` must be a length (`rem`, `px`, `em`). Keep body text at 4.5:1 or more against `background` and `card`.
 
@@ -49,13 +89,14 @@ The required fields are `name`, `handle`, `url` and `headline`.
 path: /about
 title: About
 summary: One line, as the page states it.
+section: Pages
 order: 10
 ---
 
 The page's content in Markdown.
 ```
 
-`path: /` is the home page: its body goes into `/llms.txt` and it gets no separate copy. Pages are listed by `order`, then by path.
+`path: /` is the home page: its body goes into `/llms.txt` and it gets no separate copy. Pages are listed by `order`, then by path. `section` is optional (see `sections` above). Two pages, written or from a collection, can't share a path.
 
 ## Pointers on every page
 

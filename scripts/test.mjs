@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // End-to-end test on the static example: init -> fixture content -> build -> pointers -> serve -> check.
 // The Next.js example needs `npm install`, so it is covered by the manual steps in CONTRIBUTING.md.
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -85,6 +85,72 @@ try {
   assert(sub.includes('href="/sub/path/llms.txt"') && sub.includes('href="/sub/path/"') && !/href="\/llms\.txt"/.test(sub), "/agents links carry the base path of a sub-path site");
   writeFileSync(join(dir, "agent-ready", "site.json"), siteBase);
   build(dir);
+
+  // ---------- sections and collections ----------
+  const siteCol = readFileSync(join(dir, "agent-ready", "site.json"), "utf8");
+  const aboutPath = join(pagesDir, "about.md");
+  const aboutBefore = readFileSync(aboutPath, "utf8");
+  writeFileSync(aboutPath, aboutBefore.replace("order: 10", "order: 10\nsection: About me"));
+  mkdirSync(join(dir, "agent-ready", "data"), { recursive: true });
+  writeFileSync(
+    join(dir, "agent-ready", "data", "talks.json"),
+    JSON.stringify({
+      items: [
+        { slug: "first-talk", name: "First talk", event: { name: "Example Conf" }, year: 2025, topics: ["Checkout", "Forms"], video: "" },
+        { slug: "second-talk", name: "Second talk", event: { name: "Sample Meetup" }, year: 2024, topics: [], video: "https://example.com/v/2" },
+      ],
+    }),
+  );
+  writeFileSync(
+    join(dir, "agent-ready", "talk.md"),
+    "## Where\n\n{{event.name}}, {{year}}.\n\n## Topics\n\n{{list topics}}\n\nVideo: {{video}}\n",
+  );
+  writeFileSync(
+    join(dir, "agent-ready", "site.json"),
+    JSON.stringify({
+      ...JSON.parse(siteCol),
+      sections: ["Talks"],
+      collections: [
+        { name: "talks", section: "Talks", source: "agent-ready/data/talks.json", template: "agent-ready/talk.md", path: "/talks/{{slug}}", title: "{{name}}", summary: "{{event.name}}, {{year}}. {{join topics}}", order: 50, full: false },
+      ],
+    }),
+  );
+  build(dir);
+  const llmsCol = readFileSync(join(dir, "llms.txt"), "utf8");
+  const first = readFileSync(join(dir, "talks", "first-talk.md"), "utf8");
+  const second = readFileSync(join(dir, "talks", "second-talk.md"), "utf8");
+  assert(first.includes("Example Conf, 2025.") && first.includes("- Checkout\n- Forms") && !first.includes("Video:"), "a collection writes one copy per item from its template, dropping empty lines");
+  assert(second.includes("Video: https://example.com/v/2") && !second.includes("## Topics\n\n\n"), "empty list placeholders leave no blank runs");
+  assert(llmsCol.indexOf("## Talks") < llmsCol.indexOf("## About me") && llmsCol.includes("## Pages") && llmsCol.includes("[First talk](https://example.com/talks/first-talk.md): Example Conf, 2025. Checkout, Forms"),"llms.txt groups pages into sections, in site.sections order first");
+  assert(llmsCol.includes("/talks/*.md") && !llmsCol.includes("[/talks/first-talk.md]"), "the file list shows a collection as one entry");
+  const fullCol = readFileSync(join(dir, "llms-full.txt"), "utf8");
+  assert(!fullCol.includes("# First talk") && fullCol.includes("# About"), "full: false keeps a collection out of llms-full.txt");
+  const profileCol = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
+  assert(profileCol.pages.some((p) => p.section === "Talks" && p.markdown.endsWith("/talks/second-talk.md")), "profile.json lists collection pages with their section");
+
+  const reject = (siteJson, pattern, msg) => {
+    writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify(siteJson));
+    let message = "";
+    try {
+      build(dir);
+    } catch (error) {
+      message = error.message;
+    }
+    assert(pattern.test(message), msg);
+  };
+  const colBase = JSON.parse(readFileSync(join(dir, "agent-ready", "site.json"), "utf8"));
+  const col0 = colBase.collections[0];
+  reject({ ...colBase, collections: [{ ...col0, path: "/talks/{{slug}}/../../x" }] }, /plain site path/, "a collection path with .. is rejected");
+  reject({ ...colBase, collections: [{ ...col0, path: "/talks/{{missing}}" }] }, /need every field/, "a collection path with an empty field is rejected");
+  reject({ ...colBase, collections: [{ ...col0, source: "../outside.json" }] }, /inside the site's folder/, "a collection source outside the site is rejected");
+  reject({ ...colBase, collections: [{ ...col0, path: "/about" }] }, /Two pages have the path/, "two pages with the same path are rejected");
+
+  rmSync(join(dir, "agent-ready", "data"), { recursive: true });
+  rmSync(join(dir, "agent-ready", "talk.md"));
+  writeFileSync(aboutPath, aboutBefore);
+  writeFileSync(join(dir, "agent-ready", "site.json"), siteCol);
+  build(dir);
+  assert(!existsSync(join(dir, "talks", "first-talk.md")), "removing a collection removes its copies");
 
   // What the skill does to each page.
   addPointers(dir, site);
