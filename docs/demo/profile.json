@@ -1,0 +1,34 @@
+{
+  "name": "Jane Doe",
+  "headline": "Product designer who turns messy checkout and onboarding flows into products people finish.",
+  "summary": "Twelve years designing digital products, mostly commerce and fintech.",
+  "url": "https://luisfilipeoliveira.github.io/agent-ready-site/demo",
+  "updated": "2026-01-31",
+  "readingPreference": "Jane would rather AI tools use the Markdown files than the HTML pages. This is a preference only; robots.txt blocks nothing.",
+  "contact": {
+    "email": "hello@example.com"
+  },
+  "pages": [
+    {
+      "title": "About",
+      "summary": "I have designed digital products for twelve years, mostly commerce and fintech.",
+      "url": "https://luisfilipeoliveira.github.io/agent-ready-site/demo/about",
+      "markdown": "https://luisfilipeoliveira.github.io/agent-ready-site/demo/about.md"
+    },
+    {
+      "title": "Atlas checkout",
+      "summary": "A one-page checkout for a mid-size online shop.",
+      "url": "https://luisfilipeoliveira.github.io/agent-ready-site/demo/work/atlas-checkout",
+      "markdown": "https://luisfilipeoliveira.github.io/agent-ready-site/demo/work/atlas-checkout.md"
+    }
+  ],
+  "files": [
+    "https://luisfilipeoliveira.github.io/agent-ready-site/demo/llms.txt",
+    "https://luisfilipeoliveira.github.io/agent-ready-site/demo/llm.md",
+    "https://luisfilipeoliveira.github.io/agent-ready-site/demo/llms-full.txt",
+    "https://luisfilipeoliveira.github.io/agent-ready-site/demo/profile.json",
+    "https://luisfilipeoliveira.github.io/agent-ready-site/demo/about.md",
+    "https://luisfilipeoliveira.github.io/agent-ready-site/demo/work/atlas-checkout.md",
+    "https://luisfilipeoliveira.github.io/agent-ready-site/demo/agents"
+  ]
+}

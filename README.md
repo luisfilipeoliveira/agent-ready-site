@@ -5,6 +5,8 @@
   <img src="docs/cover.png" alt="agent-ready-site: make any website readable by AI agents. An editor window runs ls -lh and cat llms.txt next to the footer link Hey agent: you.md">
 </picture>
 
+**Live demo:** [a placeholder site made agent-ready](https://luisfilipeoliveira.github.io/agent-ready-site/demo/), with its [/agents page](https://luisfilipeoliveira.github.io/agent-ready-site/demo/agents/) and [llms.txt](https://luisfilipeoliveira.github.io/agent-ready-site/demo/llms.txt).
+
 Make your website readable by AI agents, generated from the site's own content.
 
 More and more, the first reader of a website is an AI assistant working for someone else. Agents that

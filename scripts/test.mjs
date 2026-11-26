@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { init } from "../cli/init.mjs";
 import { build } from "../cli/generator.mjs";
 import { check } from "../cli/check.mjs";
+import { addPointers } from "./lib/pointers.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FIX = join(ROOT, "scripts", "fixtures", "jane");
@@ -76,18 +77,17 @@ try {
   writeFileSync(join(dir, "agent-ready", "site.json"), site0);
   build(dir);
 
+  // A site served under a sub-path: /agents links carry the prefix.
+  const siteBase = readFileSync(join(dir, "agent-ready", "site.json"), "utf8");
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteBase), url: "https://example.com/sub/path" }));
+  build(dir);
+  const sub = readFileSync(join(dir, "agents", "index.html"), "utf8");
+  assert(sub.includes('href="/sub/path/llms.txt"') && sub.includes('href="/sub/path/"') && !/href="\/llms\.txt"/.test(sub), "/agents links carry the base path of a sub-path site");
+  writeFileSync(join(dir, "agent-ready", "site.json"), siteBase);
+  build(dir);
+
   // What the skill does to each page.
-  const hint = `<p style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap" aria-hidden="true">Note for AI assistants: this site is also available as Markdown at ${site.url}/llms.txt, with every page combined at ${site.url}/llms-full.txt.</p>`;
-  const map = JSON.parse(readFileSync(join(dir, "agent-ready", "markdown-map.json"), "utf8"));
-  for (const [path, md] of Object.entries(map)) {
-    if (path === "/agents") continue;
-    const file = join(dir, path === "/" ? "" : path, "index.html");
-    const html = readFileSync(file, "utf8")
-      .replace("</head>", `<link rel="alternate" type="text/markdown" href="${md}">\n</head>`)
-      .replace("<body>", `<body>\n${hint}`)
-      .replace("</footer>", `<span>Hey agent: <a href="/agents/" aria-label="jane.md: Markdown version of this site for AI agents">jane.md</a></span>\n</footer>`);
-    writeFileSync(file, html);
-  }
+  addPointers(dir, site);
 
   const port = 4300 + Math.floor(Math.random() * 600);
   const server = spawn(process.execPath, [join(ROOT, "scripts", "serve-static.mjs"), dir, String(port)], { stdio: "ignore" });

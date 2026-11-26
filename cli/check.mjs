@@ -49,10 +49,14 @@ export async function check(base, { log = console.log } = {}) {
 
   // Every page copy the profile lists, plus its HTML page's alternate link.
   const pages = profile?.pages ?? [];
+  // Page URLs in profile.json are production URLs: take the part after the site URL, so the same check runs
+  // against a local server, a preview or a sub-path deploy.
+  const siteUrl = (profile?.url ?? "").replace(/\/+$/, "");
+  const local = (url) => (siteUrl && url.startsWith(siteUrl) ? url.slice(siteUrl.length) || "/" : new URL(url).pathname);
   for (const page of pages) {
-    const path = new URL(page.markdown).pathname;
+    const path = local(page.markdown);
     await markdownFile(path);
-    const pagePath = new URL(page.url).pathname;
+    const pagePath = local(page.url);
     const { res, text } = await get(pagePath);
     if (res?.status !== 200) fail(pagePath, `status ${res?.status}`);
     else if (!new RegExp(`rel=["']alternate["'][^>]*type=["']text/markdown["'][^>]*href=["'][^"']*${escapeRe(path)}["']|type=["']text/markdown["'][^>]*href=["'][^"']*${escapeRe(path)}["'][^>]*rel=["']alternate["']|href=["'][^"']*${escapeRe(path)}["'][^>]*rel=["']alternate["']`, "i").test(text))
@@ -89,7 +93,7 @@ export async function check(base, { log = console.log } = {}) {
       if ((res.headers.get("vary") ?? "").toLowerCase().includes("accept")) pass("Accept: text/markdown on / returns Markdown, Vary: Accept");
       else warn("Accept negotiation", "Markdown returned without Vary: Accept (caches may mix the two)");
     } else warn("Accept negotiation", "Accept: text/markdown on / still returns HTML (fine on hosts without rewrites; see the recipe)");
-    const about = pages[0] && new URL(pages[0].url).pathname;
+    const about = pages[0] && local(pages[0].url);
     if (about) {
       const r = await get(about, { Accept: "text/markdown" });
       if (r.res?.status === 200 && r.text.trimStart().startsWith("#")) pass(`Accept: text/markdown on ${about} returns Markdown`);

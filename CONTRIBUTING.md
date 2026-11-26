@@ -18,3 +18,5 @@
   It also checks every commit and commit email, and fails on any 7-word phrase shared with that folder.
 - `cli/generator.mjs` is copied into every site as `agent-ready/build.mjs`, so it must stay dependency-free and
   run on Node 18.
+- `npm run demo` rebuilds the live demo in `docs/demo/` (served by GitHub Pages from `/docs`). Run it after changing
+  the generator, the example or the fixtures, and commit the result.

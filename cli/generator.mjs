@@ -289,6 +289,9 @@ export function buildAgentsHtml(content, sizes) {
   const sans = safeValue(theme.fontSans, SAFE_FONT, DEFAULT_SANS, "theme.fontSans");
   const mono = safeValue(theme.fontMono, SAFE_FONT, DEFAULT_MONO, "theme.fontMono");
   const handle = site.handle;
+  // Sites served under a sub-path (e.g. https://user.github.io/repo): every site-relative link gets that prefix.
+  const base = new URL(site.url).pathname.replace(/\/+$/, "");
+  const home = base ? `${base}/` : "/";
 
   const blocks = [
     { command: "whoami", output: [`<h1>${esc(title)}</h1>`, `<p>${esc(lead)}</p>`] },
@@ -297,7 +300,7 @@ export function buildAgentsHtml(content, sizes) {
       command: "ls -lh",
       output: agentFiles(content).map(
         (f) =>
-          `<div class="ls"><span class="m perm">-rw-r--r--</span><span class="m size">${formatSize(sizes[f.path])}</span><a href="${esc(f.path)}">${esc(f.path)}</a><span class="m desc"># ${esc(f.description)}</span></div>`,
+          `<div class="ls"><span class="m perm">-rw-r--r--</span><span class="m size">${formatSize(sizes[f.path])}</span><a href="${esc(base + f.path)}">${esc(f.path)}</a><span class="m desc"># ${esc(f.description)}</span></div>`,
       ),
     },
     { command: "cat llms.txt", stream: true, output: buildLlmsTxt(content).trimEnd().split("\n").map(markdownLineHtml) },
@@ -320,7 +323,7 @@ export function buildAgentsHtml(content, sizes) {
   const last = row(prompt('<span class="cur blink"></span>'), ' data-k="last"');
   const avatar =
     site.avatar && SAFE_URL.test(site.avatar)
-      ? `<img src="${esc(site.avatar)}" alt="" width="40" height="40">`
+      ? `<img src="${esc(site.avatar.startsWith("/") && !site.avatar.startsWith("//") ? base + site.avatar : site.avatar)}" alt="" width="40" height="40">`
       : `<span class="ini">${esc(site.name.trim().charAt(0).toUpperCase())}</span>`;
 
   return `<!doctype html>
@@ -331,7 +334,7 @@ export function buildAgentsHtml(content, sizes) {
 <title>${esc(page.metaTitle ?? `For AI agents | ${site.name}`)}</title>
 <meta name="description" content="${esc(page.description ?? `Markdown and JSON copies of ${site.url.replace(/^https?:\/\//, "")} for AI assistants: llms.txt, every page as Markdown, and a profile.`)}">
 <link rel="canonical" href="${esc(site.url)}/agents">
-<link rel="alternate" type="text/markdown" href="/llms.txt">
+<link rel="alternate" type="text/markdown" href="${esc(base)}/llms.txt">
 <style>
 :root{${tokenVars(light)}--radius:${radius};color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not(.light){${tokenVars(dark)}color-scheme:dark}}
@@ -384,7 +387,7 @@ a:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:c
 </head>
 <body>
 <main class="win">
-<div class="bar"><div class="av"><a href="/" aria-label="${esc(site.name)}, back to the home page">${avatar}</a></div><div class="fn"><span class="file">${esc(handle)}.md</span><span class="meta"><span class="x">Markdown</span><span class="x">UTF-8</span><a href="/">Back to the site</a></span></div></div>
+<div class="bar"><div class="av"><a href="${esc(home)}" aria-label="${esc(site.name)}, back to the home page">${avatar}</a></div><div class="fn"><span class="file">${esc(handle)}.md</span><span class="meta"><span class="x">Markdown</span><span class="x">UTF-8</span><a href="${esc(home)}">Back to the site</a></span></div></div>
 <div class="lines">${body}${last}</div>
 </main>
 <script>
