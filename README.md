@@ -83,7 +83,9 @@ npx agent-ready-site check http://localhost:3000
 A site in several languages lists them in `site.json`, English first (`"languages": ["en", "pt"]`). The English
 copies stay in `agent-ready/pages/`; each further language keeps the site's own words in `agent-ready/pages/<lang>/`
 and gets its own `llms.txt` and `/agents` under its prefix. Pages the site doesn't show in that language are
-linked in the language they exist in, never translated.
+linked in the language they exist in, never translated. A site whose root is in another language, with English
+under a path (`/` in Portuguese, `/en` in English), sets `"home": "/en"` and `i18n.pt.home: "/"`; `/llms.txt` stays
+the English one.
 
 If the site already has schema.org JSON-LD, `init --jsonld http://localhost:3000` (or a built HTML or `.json`
 file) fills the name, URL, description, logo, location and contact from it. The headline and handle stay yours.

@@ -69,17 +69,20 @@ export async function check(base, { log = console.log, now = new Date() } = {}) 
     else pass(`${pagePath} links its Markdown copy`);
   }
 
-  // Home page: alternate, hidden hint, footer link.
+  // Home page: alternate, hidden hint, footer link. On a multilingual site, the English home (usually /, or for
+  // example /en on a site whose root is in another language).
+  const languages = profile?.languages ?? [];
+  const homePath = languages.length ? local(languages[0].home) : "/";
   let homeHtml = "";
   {
-    const { res, text } = await get("/");
+    const { res, text } = await get(homePath);
     if (res?.status === 200) homeHtml = text;
-    if (res?.status !== 200) fail("/", `status ${res?.status}`);
+    if (res?.status !== 200) fail(homePath, `status ${res?.status}`);
     else {
-      if (/type=["']text\/markdown["']/i.test(text) && /llms\.txt/.test(text)) pass("/ links /llms.txt as its Markdown copy");
-      else fail("/ alternate link", 'no <link rel="alternate" type="text/markdown" href="/llms.txt">');
-      if (/AI (agents|assistants)\b[^<]*llms\.txt/i.test(text)) pass("/ has the hidden hint for agents");
-      else warn("/ hint", "no hidden line pointing AI assistants to /llms.txt in <body>");
+      if (/type=["']text\/markdown["']/i.test(text) && /llms\.txt/.test(text)) pass(`${homePath} links /llms.txt as its Markdown copy`);
+      else fail(`${homePath} alternate link`, 'no <link rel="alternate" type="text/markdown" href="/llms.txt">');
+      if (/AI (agents|assistants)\b[^<]*llms\.txt/i.test(text)) pass(`${homePath} has the hidden hint for agents`);
+      else warn(`${homePath} hint`, "no hidden line pointing AI assistants to /llms.txt in <body>");
       if (/Hey agent:?\s*(<!--.*?-->\s*)*<a[^>]+href=["'](\/agents|[^"']*\/agents\/?)["']/is.test(text)) pass("footer has the 'Hey agent' link to /agents");
       else fail("footer link", "no 'Hey agent: <handle>.md' link to /agents in the home page HTML");
     }
@@ -93,7 +96,6 @@ export async function check(base, { log = console.log, now = new Date() } = {}) 
   }
 
   // Further languages: each has its own index, full file, home page and /agents.
-  const languages = profile?.languages ?? [];
   const llmsByLanguage = new Map(languages.length ? [[languages[0].language, llms]] : []);
   const languageHomes = [];
   for (const l of languages.slice(1)) {

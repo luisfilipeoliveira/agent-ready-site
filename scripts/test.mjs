@@ -389,6 +389,70 @@ try {
     rmSync(bi, { recursive: true, force: true });
   }
 
+  // ---------- A site whose root is in another language: / and /sobre in Portuguese, /en and /en/about in English ----------
+  const ptRoot = mkdtempSync(join(tmpdir(), "agent-ready-ptroot-"));
+  try {
+    mkdirSync(join(ptRoot, "agent-ready", "pages", "pt"), { recursive: true });
+    const rootSite = {
+      type: "organization", name: "Example Bikes", handle: "examplebikes", url: "https://example.com", outDir: ".",
+      headline: "Bike shop in Sample Town.", home: "/en", languages: ["en", "pt"],
+      contact: [{ label: "Email", value: "hello@example.com" }],
+      i18n: { pt: { home: "/", headline: "Loja de bicicletas em Sample Town.", contactTitle: "Contacto" } },
+    };
+    const write = (file, text) => writeFileSync(join(ptRoot, "agent-ready", "pages", file), text);
+    write("index.md", "---\npath: /en\ntitle: Home\n---\n\n## Shop\n\nCity and road bikes.\n");
+    write("about.md", "---\npath: /en/about\nmarkdown: /about\ntitle: About\nsummary: Open since 2014.\n---\n\n## How we work\n\nA test ride first.\n");
+    write("pt/index.md", "---\npath: /\ntitle: Início\n---\n\n## Loja\n\nBicicletas de cidade e de estrada.\n");
+    write("pt/about.md", "---\npath: /sobre\ntitle: Sobre\nsummary: Abertos desde 2014.\n---\n\n## Como trabalhamos\n\nPrimeiro um passeio de teste.\n");
+    writeFileSync(join(ptRoot, "agent-ready", "site.json"), JSON.stringify({ ...rootSite, i18n: { pt: { ...rootSite.i18n.pt, home: "/en" } } }));
+    let sameHome = "";
+    try {
+      build(ptRoot);
+    } catch (error) {
+      sameHome = error.message;
+    }
+    assert(sameHome.includes("both have their home page at /en"), "two languages can't share a home page");
+    writeFileSync(join(ptRoot, "agent-ready", "site.json"), JSON.stringify(rootSite));
+    build(ptRoot);
+
+    const enLlms = readFileSync(join(ptRoot, "llms.txt"), "utf8");
+    const ptLlms = readFileSync(join(ptRoot, "pt", "llms.txt"), "utf8");
+    assert(enLlms.includes("home page (https://example.com/en)") && enLlms.includes("City and road bikes.") && enLlms.includes("[About](https://example.com/about.md)"), "/llms.txt is the English home (/en) with English copy names");
+    assert(ptLlms.includes("home page (https://example.com)") && ptLlms.includes("Bicicletas de cidade") && ptLlms.includes("[Sobre](https://example.com/sobre.md)"), "/pt/llms.txt is the Portuguese home at the site root");
+    const rootMap = JSON.parse(readFileSync(join(ptRoot, "agent-ready", "markdown-map.json"), "utf8"));
+    assert(rootMap["/"] === "/pt/llms.txt" && rootMap["/en"] === "/llms.txt" && rootMap["/sobre"] === "/sobre.md" && rootMap["/en/about"] === "/about.md" && rootMap["/pt/agents"] === "/pt/llms.txt", "markdown-map.json sends each home to its own language's index");
+    const rootProfile = JSON.parse(readFileSync(join(ptRoot, "profile.json"), "utf8"));
+    assert(rootProfile.languages.map((l) => `${l.language}:${l.home}`).join(" ") === "en:https://example.com/en pt:https://example.com/", "profile.json gives each language its real home");
+    assert(readFileSync(join(ptRoot, "agents", "index.html"), "utf8").includes('<a href="/en/">Back to the site</a>') && readFileSync(join(ptRoot, "pt", "agents", "index.html"), "utf8").includes('<a href="/">'), "each /agents page links back to its own language's home");
+
+    const html = (lang, title, body, footer) => `<!doctype html>\n<html lang="${lang}">\n<head>\n<meta charset="utf-8">\n<title>${title}</title>\n</head>\n<body>\n<main>\n${body}\n</main>\n<footer>\n<span>Example Bikes</span>\n<a href="mailto:hello@example.com">hello@example.com</a>\n</footer>\n</body>\n</html>\n`;
+    for (const [path, lang, title, body] of [
+      ["", "pt", "Example Bikes", `<h1>Example Bikes</h1>\n<p>${rootSite.i18n.pt.headline}</p>\n<h2>Loja</h2>\n<p>Bicicletas de cidade e de estrada.</p>`],
+      ["sobre", "pt", "Sobre", "<h1>Sobre</h1>\n<p>Abertos desde 2014.</p>\n<h2>Como trabalhamos</h2>\n<p>Primeiro um passeio de teste.</p>"],
+      ["en", "en", "Example Bikes", `<h1>Example Bikes</h1>\n<p>${rootSite.headline}</p>\n<h2>Shop</h2>\n<p>City and road bikes.</p>`],
+      ["en/about", "en", "About", "<h1>About</h1>\n<p>Open since 2014.</p>\n<h2>How we work</h2>\n<p>A test ride first.</p>"],
+    ]) {
+      mkdirSync(join(ptRoot, path), { recursive: true });
+      writeFileSync(join(ptRoot, path, "index.html"), html(lang, title, body));
+    }
+    addPointers(ptRoot, rootSite);
+    assert(readFileSync(join(ptRoot, "index.html"), "utf8").includes('href="/pt/llms.txt"') && readFileSync(join(ptRoot, "sobre", "index.html"), "utf8").includes('href="/pt/agents/"') && readFileSync(join(ptRoot, "en", "about", "index.html"), "utf8").includes('href="/agents/"'), "pointers follow each page's language, not its URL");
+    const rootPort = port + 4;
+    const rootServer = spawn(process.execPath, [join(ROOT, "scripts", "serve-static.mjs"), ptRoot, String(rootPort)], { stdio: "ignore" });
+    await new Promise((r) => setTimeout(r, 400));
+    try {
+      const lines = [];
+      const ok = await check(`http://localhost:${rootPort}`, { log: (line) => lines.push(line), now: new Date("2026-02-15") });
+      const fails = lines.filter((l) => l.startsWith("FAIL"));
+      assert(ok && !fails.length, `check passes on a site whose root is in Portuguese${fails.length ? `: ${fails.join("; ")}` : ""}`);
+      assert(lines.some((l) => l.startsWith("ok   /en links /llms.txt")) && lines.some((l) => l.startsWith("ok   / links /pt/llms.txt")) && !lines.some((l) => l.includes("mismatch") || l.includes("hreflang")), "check reads the English home at /en and the Portuguese one at /");
+    } finally {
+      rootServer.kill();
+    }
+  } finally {
+    rmSync(ptRoot, { recursive: true, force: true });
+  }
+
   console.log("\nAll tests passed.");
 } catch (error) {
   console.error(`FAIL ${error.message}`);
