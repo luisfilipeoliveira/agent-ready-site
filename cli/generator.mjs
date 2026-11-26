@@ -10,7 +10,7 @@
  *          llms-full.txt                everything in one file
  *          profile.json                 the site's public details as structured data
  *          <page path>.md               one copy per page (/about -> about.md, /work/x -> work/x.md)
- *          agents/index.html            the /agents page: a list of the files and a preview of llms.txt
+ *          agents/index.html            the /agents page: the files as a terminal session in an editor window
  *          and agent-ready/markdown-map.json  page path -> Markdown copy, for Accept: text/markdown rewrites
  *
  * Every word comes from site.json and the page files, which hold only what the site itself says.
@@ -178,15 +178,31 @@ function inlineHtml(text) {
   return out + esc(text.slice(last));
 }
 
-/** One line of the llms.txt preview: headings in bold, safe links clickable, everything else as text. */
-function previewLineHtml(line) {
-  if (/^#{1,6} /.test(line)) return `<strong>${esc(line)}</strong>`;
+/** One line of llms.txt in the editor: headings in bold, quotes muted, list marks muted, safe links clickable. */
+function markdownLineHtml(line) {
+  if (!line) return "";
+  if (/^#{1,6} /.test(line)) return `<span class="b">${esc(line)}</span>`;
+  if (line.startsWith("> ")) return `<span class="m">${esc(line)}</span>`;
+  if (line.startsWith("- ")) return `<span class="m">- </span>${inlineHtml(line.slice(2))}`;
   return inlineHtml(line);
 }
 
 function formatSize(bytes) {
-  if (typeof bytes !== "number") return "";
-  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+  if (typeof bytes !== "number") return "-";
+  return bytes < 1024 ? `${bytes}B` : `${(bytes / 1024).toFixed(1)}K`;
+}
+
+/** A command split into tokens (program, flags, arguments), each carrying its full text for the typing script. */
+function commandHtml(command) {
+  return command
+    .split(/(\s+)/)
+    .map((token, i) => {
+      if (!token) return "";
+      if (/^\s+$/.test(token)) return `<span data-t="${esc(token)}">${esc(token)}</span>`;
+      const cls = i === 0 ? "c-prog" : token.startsWith("-") ? "c-flag" : "c-arg";
+      return `<span class="${cls}" data-t="${esc(token)}">${esc(token)}</span>`;
+    })
+    .join("");
 }
 
 /**
@@ -246,6 +262,12 @@ function safeTheme(defaults, custom = {}, mode) {
 
 const tokenVars = (t) => Object.entries(t).map(([k, v]) => `--${k.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}:${v};`).join("");
 
+/**
+ * /agents: the files shown as a terminal session inside a code-editor window. The session types itself out
+ * (four commands: whoami, then README, the file list and llms.txt). Every word is in the HTML: rows are hidden only by the script,
+ * so without JavaScript, or with reduced motion, the whole session shows at once. All colours and radii come
+ * from the tokens above.
+ */
 export function buildAgentsHtml(content, sizes) {
   const { site } = content;
   const page = site.agentsPage ?? {};
@@ -253,26 +275,53 @@ export function buildAgentsHtml(content, sizes) {
   const lead =
     page.lead ??
     "Before a person opens a site, an AI assistant has often read it for them. The files below carry the words of every page as Markdown, so an assistant can quote them directly instead of piecing them together from the layout.";
-  const notes = page.readme ?? [
-    site.readingPreference ?? "AI tools are welcome to use the Markdown files below instead of the HTML pages.",
-    "What follows is the full set of files an agent receives, unedited.",
-  ];
+  const readme = [
+    ...(page.readme ?? [
+      site.readingPreference ?? "AI tools are welcome to use the Markdown files below instead of the HTML pages.",
+      "What follows is the full set of files an agent receives, unedited.",
+    ]),
+    site.updated ? `Updated ${site.updated}` : "",
+  ].filter(Boolean);
   const theme = site.theme ?? {};
   const light = safeTheme(DEFAULT_THEME.light, theme.light, "light");
   const dark = safeTheme(DEFAULT_THEME.dark, theme.dark, "dark");
   const radius = safeValue(theme.radius, SAFE_LENGTH, DEFAULT_RADIUS, "theme.radius");
   const sans = safeValue(theme.fontSans, SAFE_FONT, DEFAULT_SANS, "theme.fontSans");
   const mono = safeValue(theme.fontMono, SAFE_FONT, DEFAULT_MONO, "theme.fontMono");
+  const handle = site.handle;
 
-  const files = agentFiles(content)
-    .map(
-      (f) => `<li>
-<div class="file-head"><a class="path" href="${esc(f.path)}">${esc(f.path)}</a>${sizes[f.path] !== undefined ? `<span class="size">${formatSize(sizes[f.path])}</span>` : ""}</div>
-<p class="desc">${esc(f.description)}</p>
-</li>`,
-    )
-    .join("\n");
-  const preview = buildLlmsTxt(content).trimEnd().split("\n").map(previewLineHtml).join("\n");
+  const blocks = [
+    { command: "whoami", output: [`<h1>${esc(title)}</h1>`, `<p>${esc(lead)}</p>`] },
+    { command: "cat README", output: readme.map((text, i) => `<p${i === readme.length - 1 ? ' class="m"' : ""}>${esc(text)}</p>`) },
+    {
+      command: "ls -lh",
+      output: agentFiles(content).map(
+        (f) =>
+          `<div class="ls"><span class="m perm">-rw-r--r--</span><span class="m size">${formatSize(sizes[f.path])}</span><a href="${esc(f.path)}">${esc(f.path)}</a><span class="m desc"># ${esc(f.description)}</span></div>`,
+      ),
+    },
+    { command: "cat llms.txt", stream: true, output: buildLlmsTxt(content).trimEnd().split("\n").map(markdownLineHtml) },
+  ];
+
+  let n = 1;
+  const row = (inner, attrs = "") => `<div class="row"${attrs}><span class="n" aria-hidden="true">${n++}</span><div class="t">${inner || " "}</div></div>`;
+  const prompt = (inner) =>
+    `<p class="prompt"><span class="seg"><span class="u">${esc(handle)}</span><span class="d">~/agents</span></span><span class="m">%</span>${inner}</p>`;
+  const body = blocks
+    .map((block, b) => {
+      const head = row(
+        prompt(`<span class="sr">${esc(block.command)}</span><span class="cmd" aria-hidden="true">${commandHtml(block.command)}</span>`),
+        ` data-b="${b}" data-k="cmd"`,
+      );
+      const out = block.output.map((line) => row(line, ` data-b="${b}" data-k="out"${block.stream ? ' data-s="1"' : ""}`)).join("");
+      return head + out + row("", ` data-b="${b}" data-k="end"`);
+    })
+    .join("");
+  const last = row(prompt('<span class="cur blink"></span>'), ' data-k="last"');
+  const avatar =
+    site.avatar && SAFE_URL.test(site.avatar)
+      ? `<img src="${esc(site.avatar)}" alt="" width="40" height="40">`
+      : `<span class="ini">${esc(site.name.trim().charAt(0).toUpperCase())}</span>`;
 
   return `<!doctype html>
 <html lang="${esc(site.language ?? "en")}">
@@ -289,61 +338,76 @@ export function buildAgentsHtml(content, sizes) {
 :root.dark{${tokenVars(dark)}color-scheme:dark}
 *{box-sizing:border-box}
 html,body{margin:0}
-body{background:var(--background);color:var(--foreground);font:16px/1.6 ${sans};-webkit-font-smoothing:antialiased}
-a{color:inherit;text-decoration:underline;text-decoration-color:var(--muted-foreground);text-underline-offset:3px}
+body{background-color:var(--background);background-image:radial-gradient(var(--border) 1px,transparent 1px);background-size:12px 12px;background-attachment:fixed;color:var(--foreground);font:14px/1.6 ${mono};padding:1rem;-webkit-font-smoothing:antialiased}
+@media (min-width:640px){body{padding:1.5rem 2rem}}
+h1,p{margin:0;font:inherit}
+h1{font-weight:600}
+a{color:var(--foreground);text-decoration:underline;text-decoration-color:var(--muted-foreground);text-decoration-thickness:1px;text-underline-offset:3px}
 a:hover{text-decoration-color:var(--foreground)}
 a:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:calc(var(--radius) - 2px)}
-.wrap{max-width:720px;margin:0 auto;padding:0 16px}
-header.top{border-bottom:1px solid var(--border)}
-header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:56px}
-.site{font-weight:600;text-decoration:none}
-.back{font-size:14px;color:var(--muted-foreground)}
-main.wrap{padding-top:40px;padding-bottom:64px}
-h1{font-size:28px;line-height:1.25;letter-spacing:-0.01em;margin:0 0 12px}
-h2{font-size:16px;margin:0}
-.lead{margin:0;color:var(--foreground)}
-.notes{margin:16px 0 0;padding:0;list-style:none;font-size:14px;color:var(--muted-foreground)}
-.notes li+li{margin-top:4px}
-section{margin-top:32px}
-.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:calc(var(--radius) + 4px);overflow:hidden}
-.card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border-bottom:1px solid var(--border)}
-.files{list-style:none;margin:0;padding:0}
-.files li{padding:12px 16px}
-.files li+li{border-top:1px solid var(--border)}
-.file-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
-.path{font-family:${mono};font-size:14px;overflow-wrap:anywhere}
-.size{font-family:${mono};font-size:12px;color:var(--muted-foreground);white-space:nowrap}
-.desc{margin:2px 0 0;font-size:14px;color:var(--muted-foreground)}
+.win{max-width:72rem;margin:0 auto;min-height:calc(100svh - 2rem);background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:calc(var(--radius) + 4px);display:flex;flex-direction:column}
+@media (min-width:640px){.win{min-height:calc(100svh - 3rem)}}
+.bar{display:grid;grid-template-columns:3rem 1fr;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);border-radius:calc(var(--radius) + 4px) calc(var(--radius) + 4px) 0 0;z-index:2;font-family:${sans}}
+.bar .av{display:flex;align-items:center;justify-content:center;border-right:1px solid var(--border);padding:.75rem 0}
+.bar .av a{display:block;border-radius:50%;text-decoration:none}
+.bar .av img,.ini{display:flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;border-radius:50%;object-fit:cover;background:var(--muted);color:var(--foreground);font-size:13px;font-weight:600}
+.bar .fn{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0 1rem 0 .75rem;color:var(--muted-foreground);min-width:0;font-size:13px}
+.bar .fn .file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:${mono}}
+.bar .meta{display:flex;align-items:center;gap:1rem;flex-shrink:0}
+.bar .meta .x{display:none}
+@media (min-width:640px){.bar .meta .x{display:inline}}
+.lines{position:relative;flex:1;padding:.75rem 0 2rem}
+.lines:before{content:"";position:absolute;top:0;bottom:0;left:calc(3rem - 1px);width:1px;background:var(--border)}
+.row{display:grid;grid-template-columns:3rem 1fr;align-items:start;padding:.3rem 0}
+.row:hover{background:var(--muted)}
+.n{text-align:right;padding-right:.75rem;color:var(--muted-foreground);opacity:.55;user-select:none;font-size:12px;line-height:22px}
+.row:hover .n{opacity:1}
+.t{min-width:0;padding-left:.875rem;padding-right:1rem;overflow-wrap:anywhere}
 .m{color:var(--muted-foreground)}
-.button{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:var(--radius);background:var(--primary);color:var(--primary-foreground);font-size:14px;font-weight:500;text-decoration:none}
-.button:hover{opacity:.9}
-pre{margin:0;padding:16px;background:var(--muted);font:13px/1.6 ${mono};white-space:pre-wrap;overflow-wrap:anywhere}
-footer.bottom{border-top:1px solid var(--border);font-size:14px;color:var(--muted-foreground)}
-footer.bottom .wrap{padding-top:16px;padding-bottom:16px}
+.b{font-weight:600}
+.prompt{display:flex;flex-wrap:wrap;align-items:center;column-gap:1ch}
+.seg{display:inline-flex}
+.seg .u{background:var(--primary);color:var(--primary-foreground);padding:0 1ch;border-radius:var(--radius) 0 0 var(--radius)}
+.seg .d{background:var(--muted);color:var(--foreground);padding:0 1ch;border-radius:0 var(--radius) var(--radius) 0}
+.c-prog{font-weight:600}.c-flag{color:var(--muted-foreground)}.c-arg{text-decoration:underline;text-decoration-color:var(--border);text-underline-offset:3px}
+.ls{display:grid;grid-template-columns:5ch 1fr;column-gap:2ch}
+.ls .perm{display:none}
+.ls .size{text-align:right}
+.ls .desc{grid-column-start:2}
+@media (min-width:768px){.ls{grid-template-columns:10ch 5ch 24ch 1fr}.ls .perm{display:block}.ls .desc{grid-column-start:auto}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.cur{display:inline-block;width:.6em;height:1em;margin-left:.1em;vertical-align:middle;background:var(--foreground)}
+@media (prefers-reduced-motion:no-preference){.blink{animation:blink 1.1s steps(1,end) infinite}}
+@keyframes blink{50%{opacity:0}}
+.hide{visibility:hidden}
 </style>
 </head>
 <body>
-<header class="top"><div class="wrap"><a class="site" href="/">${esc(site.name)}</a><a class="back" href="/">Back to the site</a></div></header>
-<main class="wrap">
-<h1>${esc(title)}</h1>
-<p class="lead">${esc(lead)}</p>
-<ul class="notes">${notes.map((line) => `<li>${esc(line)}</li>`).join("")}${site.updated ? `<li>Updated ${esc(site.updated)}</li>` : ""}</ul>
-<section aria-labelledby="files-title">
-<div class="card">
-<div class="card-head"><h2 id="files-title">Files</h2></div>
-<ul class="files">
-${files}
-</ul>
-</div>
-</section>
-<section aria-labelledby="preview-title">
-<div class="card">
-<div class="card-head"><h2 id="preview-title">llms.txt</h2><a class="button" href="/llms.txt">Open</a></div>
-<pre>${preview}</pre>
-</div>
-</section>
+<main class="win">
+<div class="bar"><div class="av"><a href="/" aria-label="${esc(site.name)}, back to the home page">${avatar}</a></div><div class="fn"><span class="file">${esc(handle)}.md</span><span class="meta"><span class="x">Markdown</span><span class="x">UTF-8</span><a href="/">Back to the site</a></span></div></div>
+<div class="lines">${body}${last}</div>
 </main>
-<footer class="bottom"><div class="wrap">${esc(site.handle)}.md</div></footer>
+<script>
+(function(){
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  var TYPE=35, WAIT=400, RUN=250, LINE=40, STREAM=12;
+  var rows=[].slice.call(document.querySelectorAll(".row[data-k]"));
+  rows.forEach(function(r){r.classList.add("hide")});
+  var blocks={};
+  rows.forEach(function(r){var b=r.getAttribute("data-b"); if(b===null) return; (blocks[b]=blocks[b]||[]).push(r)});
+  var t=0; function at(ms,fn){t+=ms; setTimeout(fn,t)}
+  Object.keys(blocks).sort(function(a,b){return a-b}).forEach(function(b){
+    var rs=blocks[b], head=rs[0], toks=[].slice.call(head.querySelectorAll("[data-t]"));
+    var cur=document.createElement("span"); cur.className="cur";
+    at(0,function(){toks.forEach(function(s){s.textContent=""}); head.querySelector(".cmd").appendChild(cur); head.classList.remove("hide")});
+    var first=true;
+    toks.forEach(function(s){var full=s.getAttribute("data-t"); for(var i=1;i<=full.length;i++){(function(i){at(first?WAIT:TYPE,function(){s.textContent=full.slice(0,i)}); first=false})(i)}});
+    at(RUN,function(){cur.remove()});
+    rs.slice(1).forEach(function(r){at(r.getAttribute("data-s")?STREAM:LINE,function(){r.classList.remove("hide")})});
+  });
+  at(0,function(){var l=document.querySelector('.row[data-k="last"]'); if(l) l.classList.remove("hide")});
+})();
+</script>
 </body>
 </html>
 `;

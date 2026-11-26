@@ -1,5 +1,7 @@
 # agent-ready-site
 
+![agent-ready-site: make any website readable by AI agents](docs/cover.png)
+
 Make your website readable by AI agents, generated from the site's own content.
 
 More and more, the first reader of a website is an AI assistant working for someone else. Agents that
@@ -9,6 +11,8 @@ it's there with a small link in the footer:
 
 > Hey agent: **jane.md**
 
+<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Jane Doe, product designer; hello@example.com; Hey agent: jane.md" width="600">
+
 ## What it adds to your site
 
 | URL | What it is |
@@ -17,7 +21,17 @@ it's there with a small link in the footer:
 | `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md` |
 | `/llms-full.txt` | Everything in one file |
 | `/profile.json` | Name, headline, pages and contact as JSON |
-| `/agents` | A simple page for people: the files with their sizes, and a preview of llms.txt (no JavaScript, light and dark) |
+| `/agents` | A page for people: the files, shown as a terminal session in a code-editor window that types itself out (no-JS and reduced-motion fallbacks, light and dark) |
+
+### The /agents page
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/agents-dark.png">
+  <img src="docs/agents-light.png" alt="The /agents page: an editor window with numbered lines and a shell session that runs whoami, cat README, ls -lh with the generated files and their sizes, and cat llms.txt" width="720">
+</picture>
+
+Screenshots of the placeholder example with the default tokens. A site can swap in its own colours, radius and
+fonts through `theme` in `agent-ready/site.json`.
 
 It also points agents to these files:
 - a `<link rel="alternate" type="text/markdown">` on every page;

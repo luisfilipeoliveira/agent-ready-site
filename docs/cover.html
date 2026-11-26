@@ -1,0 +1,74 @@
+<!doctype html>
+<!--
+  Cover for the repository (1280x640, GitHub's social-preview size), built on the same tokens and editor look
+  as the generated /agents page. Regenerate docs/cover.png with headless Chrome, for example:
+  "Google Chrome" --headless=new --hide-scrollbars --force-device-scale-factor=2 --window-size=1280,640 \
+    --screenshot=docs/cover.png docs/cover.html
+-->
+<html lang="en" class="light">
+<head>
+<meta charset="utf-8">
+<title>agent-ready-site</title>
+<style>
+:root{
+  --background:oklch(1 0 0);--foreground:oklch(0.147 0.004 49.25);--card:oklch(1 0 0);
+  --primary:oklch(0.216 0.006 56.043);--primary-foreground:oklch(0.985 0.001 106.423);
+  --muted:oklch(0.97 0.001 106.424);--muted-foreground:oklch(0.553 0.013 58.071);
+  --border:oklch(0.923 0.003 48.717);--radius:0.45rem;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:1280px;height:640px;overflow:hidden}
+body{background-color:var(--muted);background-image:radial-gradient(var(--border) 1.2px,transparent 1.2px);background-size:14px 14px;color:var(--foreground);font-family:var(--sans);display:grid;grid-template-columns:500px 1fr;gap:56px;align-items:center;padding:0 64px 0 80px}
+.left h1{font:700 52px/1.05 var(--mono);letter-spacing:-0.02em;margin:0 0 22px}
+.left p{font-size:24px;line-height:1.4;margin:0 0 40px;color:var(--foreground)}
+.footer-demo{display:inline-flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:calc(var(--radius) + 4px);padding:14px 20px;font-size:20px;color:var(--muted-foreground);box-shadow:0 1px 2px oklch(0 0 0 / 4%)}
+.footer-demo b{color:var(--foreground);font-weight:500;text-decoration:underline;text-decoration-color:var(--muted-foreground);text-underline-offset:4px}
+.win{background:var(--card);border:1px solid var(--border);border-radius:calc(var(--radius) + 6px);box-shadow:0 12px 40px oklch(0 0 0 / 8%);font:15px/1.65 var(--mono);overflow:hidden}
+.bar{display:grid;grid-template-columns:52px 1fr;border-bottom:1px solid var(--border);color:var(--muted-foreground);font:13px var(--sans)}
+.bar .av{display:flex;justify-content:center;align-items:center;border-right:1px solid var(--border);padding:10px 0}
+.ini{width:26px;height:26px;border-radius:50%;background:var(--muted);color:var(--foreground);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px}
+.bar .fn{display:flex;justify-content:space-between;align-items:center;padding:0 16px 0 14px}
+.bar .fn span:first-child{font-family:var(--mono)}
+.lines{position:relative;padding:10px 0 14px}
+.lines:before{content:"";position:absolute;top:0;bottom:0;left:51px;width:1px;background:var(--border)}
+.row{display:grid;grid-template-columns:52px 1fr;padding:2px 0}
+.n{text-align:right;padding-right:12px;color:var(--muted-foreground);opacity:.55;font-size:12px;line-height:25px}
+.t{padding-left:14px;white-space:pre;overflow:hidden;text-overflow:ellipsis;padding-right:16px}
+.m{color:var(--muted-foreground)}
+.b{font-weight:600}
+.u{text-decoration:underline;text-decoration-color:var(--muted-foreground);text-underline-offset:3px}
+.prompt{display:inline-flex;gap:1ch;align-items:center}
+.seg{display:inline-flex}
+.seg span:first-child{background:var(--primary);color:var(--primary-foreground);padding:0 1ch;border-radius:var(--radius) 0 0 var(--radius)}
+.seg span:last-child{background:var(--muted);padding:0 1ch;border-radius:0 var(--radius) var(--radius) 0}
+.cur{display:inline-block;width:.6em;height:1em;vertical-align:middle;background:var(--foreground);margin-left:2px}
+</style>
+</head>
+<body>
+<div class="left">
+  <h1>agent-ready-site</h1>
+  <p>Make any website readable by AI agents, generated from its own content.</p>
+  <div class="footer-demo">Hey agent: <b>you.md</b></div>
+</div>
+<div class="win">
+  <div class="bar"><div class="av"><span class="ini">Y</span></div><div class="fn"><span>you.md</span><span>Markdown&nbsp;&nbsp;&nbsp;UTF-8</span></div></div>
+  <div class="lines">
+    <div class="row"><span class="n">1</span><div class="t"><span class="prompt"><span class="seg"><span>you</span><span>~/agents</span></span><span class="m">%</span><span class="b">ls</span> <span class="m">-lh</span></span></div></div>
+    <div class="row"><span class="n">2</span><div class="t"><span class="m">1.6K</span>  <span class="u">/llms.txt</span>        <span class="m"># the entry point</span></div></div>
+    <div class="row"><span class="n">3</span><div class="t"><span class="m">2.3K</span>  <span class="u">/llms-full.txt</span>   <span class="m"># every page, one file</span></div></div>
+    <div class="row"><span class="n">4</span><div class="t"><span class="m">1.2K</span>  <span class="u">/profile.json</span>    <span class="m"># the same, as data</span></div></div>
+    <div class="row"><span class="n">5</span><div class="t"><span class="m">412B</span>  <span class="u">/about.md</span>        <span class="m"># one copy per page</span></div></div>
+    <div class="row"><span class="n">6</span><div class="t"> </div></div>
+    <div class="row"><span class="n">7</span><div class="t"><span class="prompt"><span class="seg"><span>you</span><span>~/agents</span></span><span class="m">%</span><span class="b">cat</span> <span class="u">llms.txt</span></span></div></div>
+    <div class="row"><span class="n">8</span><div class="t"><span class="b"># Your Name</span></div></div>
+    <div class="row"><span class="n">9</span><div class="t"><span class="m">&gt; What you do, in one line.</span></div></div>
+    <div class="row"><span class="n">10</span><div class="t"><span class="b">## Pages</span></div></div>
+    <div class="row"><span class="n">11</span><div class="t"><span class="m">- </span>[<span class="u">About</span>](https://example.com/about.md)</div></div>
+    <div class="row"><span class="n">12</span><div class="t"> </div></div>
+    <div class="row"><span class="n">13</span><div class="t"><span class="prompt"><span class="seg"><span>you</span><span>~/agents</span></span><span class="m">%</span><span class="cur"></span></span></div></div>
+  </div>
+</div>
+</body>
+</html>

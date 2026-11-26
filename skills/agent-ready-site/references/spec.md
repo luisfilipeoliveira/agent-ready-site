@@ -9,7 +9,7 @@
 | `/llms-full.txt` | `/llms.txt` plus every page copy, separated by `---`, with contact once at the end | text/plain |
 | `/profile.json` | The site's public details as JSON: name, headline, summary, location, contact, pages (url and markdown), files, plus anything in `site.profile` | application/json |
 | `<page path>.md` | One copy per page: `/about` → `/about.md`, `/work/case` → `/work/case.md`. Starts `# Title`, `Source: <url>`, `> summary`, then the body and contact | text/markdown |
-| `/agents` | A page for people: the files above with their real sizes, and a preview of `/llms.txt`. Plain HTML and CSS, no JavaScript, light and dark (`prefers-color-scheme` or `<html class="dark">`) | text/html |
+| `/agents` | A page for people: the files above shown as a terminal session in a code-editor window (`whoami`, `cat README`, `ls -lh` with real sizes, `cat llms.txt`) that types itself out. Every word is in the HTML; without JavaScript or with reduced motion it shows at once. Light and dark (`prefers-color-scheme`, or `<html class="dark">` / `"light"`) | text/html |
 
 It also writes `agent-ready/markdown-map.json` (page path → copy, used by the rewrites) and `agent-ready/.generated.json` (what was written, so stale copies are removed).
 

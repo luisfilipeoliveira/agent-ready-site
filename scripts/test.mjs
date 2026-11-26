@@ -70,7 +70,7 @@ try {
   const agents = readFileSync(join(dir, "agents", "index.html"), "utf8");
   assert(!/href="javascript:/i.test(agents) && agents.includes("[bad](javascript:alert(1))"), "javascript: links on /agents stay plain text");
   assert(!agents.includes("<script>alert") && agents.split("</style>").length === 2, "unsafe theme values fall back to the defaults");
-  assert(!/<script/i.test(agents) && agents.includes(":root.dark{") && agents.includes("prefers-color-scheme:dark") && agents.includes("--radius:0.45rem"), "/agents has no JavaScript and ships the light, dark and radius tokens");
+  assert((agents.match(/<script/gi) ?? []).length === 1 && !/alert\(/.test(agents.split("<script>")[1]) && agents.includes(":root.dark{") && agents.includes("prefers-color-scheme:dark") && agents.includes("--radius:0.45rem"), "/agents has one inline script and ships the light, dark and radius tokens");
   rmSync(evil);
   writeFileSync(home, homeBefore);
   writeFileSync(join(dir, "agent-ready", "site.json"), site0);
