@@ -72,3 +72,4 @@ The page's content in Markdown.
    ```
    The visible text is `<handle>.md`. Use the site's own link styling.
 5. **robots.txt** stays as it is. The reading preference is only a preference and blocks nothing. If there is a sitemap, add `/agents` to it.
+   `check` reads robots.txt and warns when it blocks AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended and others) from `/llms.txt`. It also requests `/llms.txt` with each crawler's User-Agent and warns when the host refuses it. Both are the owner's choice: report them, don't change them. Blocks that verify the crawler's IP can't be tested this way.

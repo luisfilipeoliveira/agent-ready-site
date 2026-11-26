@@ -107,6 +107,8 @@ export async function check(base, { log = console.log } = {}) {
     else pass("/llms.txt links every page copy");
   }
 
+  await checkCrawlers(base, { get, pass, warn });
+
   for (const r of results) {
     const mark = r.level === "pass" ? "ok  " : r.level === "warn" ? "warn" : "FAIL";
     log(`${mark} ${r.name}${r.why ? `: ${r.why}` : ""}`);
@@ -116,6 +118,107 @@ export async function check(base, { log = console.log } = {}) {
   const warned = count("warn");
   log(`\n${count("pass")} passed, ${warned} warning${warned === 1 ? "" : "s"}, ${failed} failed.`);
   return failed === 0;
+}
+
+// ---------- AI crawlers ----------
+
+/**
+ * The AI crawlers and fetchers sites most often allow or block. `ua` is the User-Agent they send; tokens with no
+ * `ua` (Google-Extended, Applebot-Extended) only exist in robots.txt and never fetch anything themselves.
+ */
+export const AI_CRAWLERS = [
+  { token: "GPTBot", ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)" },
+  { token: "OAI-SearchBot", ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot)" },
+  { token: "ChatGPT-User", ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot" },
+  { token: "ClaudeBot", ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)" },
+  { token: "Claude-SearchBot", ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-SearchBot/1.0; +https://www.anthropic.com)" },
+  { token: "Claude-User", ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +https://www.anthropic.com)" },
+  { token: "PerplexityBot", ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)" },
+  { token: "Perplexity-User", ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Perplexity-User/1.0; +https://perplexity.ai/perplexity-user)" },
+  { token: "CCBot", ua: "CCBot/2.0 (https://commoncrawl.org/faq/)" },
+  { token: "Google-Extended" },
+  { token: "Applebot-Extended" },
+];
+
+/** robots.txt as groups of { agents, rules }, following RFC 9309 (consecutive user-agent lines share one group). */
+export function parseRobots(text) {
+  const groups = [];
+  let current = null;
+  let lastWasAgent = false;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, "").trim();
+    const kv = /^([A-Za-z-]+)\s*:\s*(.*)$/.exec(line);
+    if (!kv) continue;
+    const key = kv[1].toLowerCase();
+    const value = kv[2].trim();
+    if (key === "user-agent") {
+      if (!lastWasAgent) groups.push((current = { agents: [], rules: [] }));
+      current.agents.push(value.toLowerCase());
+      lastWasAgent = true;
+    } else {
+      lastWasAgent = false;
+      if (current && (key === "allow" || key === "disallow")) current.rules.push({ allow: key === "allow", path: value });
+    }
+  }
+  return groups;
+}
+
+/** Whether `token` may fetch `path`: its own group (or `*`), longest matching rule wins, allow wins ties. */
+export function robotsAllows(groups, token, path) {
+  const name = token.toLowerCase();
+  const own = groups.filter((g) => g.agents.includes(name));
+  const rules = (own.length ? own : groups.filter((g) => g.agents.includes("*"))).flatMap((g) => g.rules);
+  let best = null;
+  for (const rule of rules) {
+    if (!rule.path) continue; // "Disallow:" with no path allows everything
+    if (!robotsPathRe(rule.path).test(path)) continue;
+    if (!best || rule.path.length > best.path.length || (rule.path.length === best.path.length && rule.allow)) best = rule;
+  }
+  return !best || best.allow;
+}
+
+const robotsPathRe = (pattern) => {
+  const end = pattern.endsWith("$");
+  const body = (end ? pattern.slice(0, -1) : pattern).split("*").map(escapeRe).join(".*");
+  return new RegExp(`^${body}${end ? "$" : ""}`);
+};
+
+/**
+ * robots.txt rules and User-Agent blocks for AI crawlers. Both are the owner's choice, so they only warn: the
+ * point is that a site made readable for agents is not also turning them away without knowing it.
+ */
+async function checkCrawlers(base, { get, pass, warn }) {
+  const { origin, pathname } = new URL(base + "/");
+  const prefix = pathname.replace(/\/+$/, "");
+  const llmsPath = `${prefix}/llms.txt`;
+
+  // robots.txt lives at the origin's root, even for a site under a sub-path.
+  const robots = await fetch(`${origin}/robots.txt`, { redirect: "follow" }).then(
+    async (res) => ({ status: res.status, text: await res.text() }),
+    () => null,
+  );
+  if (!robots || robots.status !== 200) pass("robots.txt: none found, so no AI crawler is blocked");
+  else {
+    const groups = parseRobots(robots.text);
+    const blocked = AI_CRAWLERS.filter((c) => !robotsAllows(groups, c.token, llmsPath)).map((c) => c.token);
+    if (blocked.length) warn("robots.txt", `blocks ${blocked.join(", ")} from ${llmsPath} (fine if intended; those agents won't read the Markdown)`);
+    else pass(`robots.txt lets the ${AI_CRAWLERS.length} AI crawlers checked read ${llmsPath}`);
+  }
+
+  // Firewall or bot-protection rules that match the User-Agent. Rules that verify the crawler's IP (Cloudflare's
+  // "Block AI bots", for example) can't be reproduced from here, so a pass only covers User-Agent rules.
+  const baseline = await get("/llms.txt");
+  if (baseline.res?.status !== 200) return; // already reported above
+  const refused = [];
+  for (const crawler of AI_CRAWLERS.filter((c) => c.ua)) {
+    const { res, text } = await get("/llms.txt", { "User-Agent": crawler.ua });
+    const type = res?.headers.get("content-type") ?? "";
+    if (!res) refused.push(`${crawler.token} (no response)`);
+    else if (res.status !== 200) refused.push(`${crawler.token} (${res.status})`);
+    else if (!MARKDOWN_TYPES.test(type) || !text.trimStart().startsWith("#")) refused.push(`${crawler.token} (gets ${type.split(";")[0] || "no content-type"}, not the Markdown)`);
+  }
+  if (refused.length) warn("AI crawler User-Agents", `/llms.txt is refused to ${refused.join(", ")}; check the host's firewall or bot protection`);
+  else pass(`/llms.txt answers the ${AI_CRAWLERS.filter((c) => c.ua).length} AI crawler User-Agents (IP-verified blocks can't be tested from here)`);
 }
 
 function escapeRe(s) {

@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { init } from "../cli/init.mjs";
 import { build } from "../cli/generator.mjs";
-import { check } from "../cli/check.mjs";
+import { check, parseRobots, robotsAllows } from "../cli/check.mjs";
 import { addPointers } from "./lib/pointers.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -86,6 +86,12 @@ try {
   writeFileSync(join(dir, "agent-ready", "site.json"), siteBase);
   build(dir);
 
+  // robots.txt parsing for the AI crawler check (RFC 9309: own group over *, longest rule wins, allow wins ties).
+  const robots = parseRobots("User-agent: *\nDisallow: /private\n\nUser-agent: GPTBot\nUser-agent: CCBot\nDisallow: /\nAllow: /llms.txt$\n\nUser-agent: ClaudeBot\nDisallow: /*.txt\n\nUser-agent: PerplexityBot\nDisallow:\n");
+  assert(robotsAllows(robots, "GPTBot", "/llms.txt") && !robotsAllows(robots, "gptbot", "/about.md") && !robotsAllows(robots, "CCBot", "/llms.txt.bak"), "robots.txt: a crawler's own group, with $ anchors and case-insensitive names");
+  assert(!robotsAllows(robots, "ClaudeBot", "/llms.txt") && robotsAllows(robots, "ClaudeBot", "/private"), "robots.txt: * wildcards, and an own group replaces the * group");
+  assert(robotsAllows(robots, "PerplexityBot", "/llms.txt") && !robotsAllows(robots, "Claude-User", "/private/x") && robotsAllows(robots, "Claude-User", "/llms.txt"), "robots.txt: empty Disallow allows all, others fall back to *");
+
   // What the skill does to each page.
   addPointers(dir, site);
 
@@ -97,8 +103,26 @@ try {
     const ok = await check(`http://localhost:${port}`, { log: (line) => lines.push(line) });
     console.log(lines.map((l) => `     ${l}`).join("\n"));
     assert(ok, "check passes on the agent-ready static site");
+    assert(lines.some((l) => l.startsWith("ok   robots.txt: none found")) && lines.some((l) => l.startsWith("ok   /llms.txt answers the")), "check reports no robots.txt and no User-Agent blocks");
   } finally {
     server.kill();
+  }
+
+  // A site that blocks AI crawlers in robots.txt and by User-Agent: the check warns but still passes.
+  writeFileSync(join(dir, "robots.txt"), "User-agent: GPTBot\nDisallow: /\n\nUser-agent: *\nAllow: /\n");
+  const port2 = port + 1;
+  const blocking = spawn(process.execPath, [join(ROOT, "scripts", "serve-static.mjs"), dir, String(port2)], { stdio: "ignore", env: { ...process.env, BLOCK_UA: "ClaudeBot|PerplexityBot" } });
+  await new Promise((r) => setTimeout(r, 400));
+  try {
+    const lines = [];
+    const ok = await check(`http://localhost:${port2}`, { log: (line) => lines.push(line) });
+    const robotsLine = lines.find((l) => l.startsWith("warn robots.txt"));
+    const uaLine = lines.find((l) => l.startsWith("warn AI crawler User-Agents"));
+    assert(ok && robotsLine?.includes("GPTBot") && !robotsLine.includes("ClaudeBot"), "check warns on crawlers robots.txt blocks, without failing");
+    assert(uaLine?.includes("ClaudeBot (403)") && uaLine.includes("PerplexityBot (403)") && !uaLine.includes("GPTBot"), "check warns on User-Agents the host refuses");
+  } finally {
+    blocking.kill();
+    rmSync(join(dir, "robots.txt"));
   }
   console.log("\nAll tests passed.");
 } catch (error) {

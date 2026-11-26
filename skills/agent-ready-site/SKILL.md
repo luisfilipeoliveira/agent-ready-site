@@ -36,7 +36,7 @@ The contract (what files, which URLs, which headers) is in `references/spec.md`.
    using the site's own link component and class (`next/link` in Next.js, the site's `<a>` class elsewhere). Put it where it fits the footer's layout, without restyling the rest. If the site has no footer, propose a one-line footer to the owner and add it only after they agree.
 8. **Verify.** Build and start the site the way the project does (for example `npm run build && npm run start`, or serve the static folder). Then run
    `node <this skill's folder>/../../cli/bin.mjs check http://localhost:<port>`
-   and fix every `FAIL`. A `warn` on Accept negotiation is acceptable only on hosts without rewrites. Explain why in the report.
+   and fix every `FAIL`. A `warn` on Accept negotiation is acceptable only on hosts without rewrites. Explain why in the report. A `warn` on robots.txt or AI crawler User-Agents means the site turns some agents away: leave the rules as they are and list the blocked crawlers in the report, so the owner can decide.
 9. **Report** to the owner:
    - the files that were generated;
    - the pages that were covered, and any that were skipped (with why);
