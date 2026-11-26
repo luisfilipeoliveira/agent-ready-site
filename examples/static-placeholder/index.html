@@ -7,14 +7,27 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<nav><a href="/">Home</a> <a href="/about/">About</a></nav>
+<nav><a class="logo" href="/">[ JD ]</a> <a href="/">Home</a> <a href="/about/">About</a></nav>
 <main>
+<section class="grid wide">
+<div class="box"><span class="tag" aria-hidden="true">Hero</span>
 <h1>Jane Doe</h1>
-<p>Product designer who turns messy checkout and onboarding flows into products people finish.</p>
+<p class="lead">Product designer who turns messy checkout and onboarding flows into products people finish.</p>
+<div class="actions"><a class="btn solid" href="/work/atlas-checkout/">See the work</a> <a class="btn" href="mailto:hello@example.com">Get in touch</a></div>
+</div>
+<div class="ph" data-label="Portrait 4:3" aria-hidden="true" style="aspect-ratio:4/3"></div>
+</section>
+<section class="box"><span class="tag" aria-hidden="true">Case studies</span>
 <h2>Selected work</h2>
-<ul><li><a href="/work/atlas-checkout/">Atlas checkout</a>: a one-page checkout that lifted completed orders by 18%.</li></ul>
+<div class="grid">
+<a class="card" href="/work/atlas-checkout/"><div class="ph" data-label="Image 16:9" aria-hidden="true"></div><h3>Atlas checkout</h3><p>A one-page checkout that lifted completed orders by 18%.</p></a>
+<div aria-hidden="true"><div class="ph" data-label="Next case study"></div><div class="lines"><i></i><i></i><i></i></div></div>
+</div>
+</section>
+<section class="box"><span class="tag" aria-hidden="true">Logo strip</span>
 <h2>Clients</h2>
-<p>Client One, Client Two, Client Three.</p>
+<ul class="logos"><li>Client One</li><li>Client Two</li><li>Client Three</li></ul>
+</section>
 </main>
 <footer>
 <span>Jane Doe, product designer</span>
