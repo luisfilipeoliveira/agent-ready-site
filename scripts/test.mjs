@@ -219,7 +219,8 @@ try {
   const homeHtmlPath = join(dir, "index.html");
   const homeHtmlBefore = readFileSync(homeHtmlPath, "utf8");
   writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteDrift), headline: "Designer of everything.", contact: [{ label: "Phone", value: "+1 555 0100" }] }));
-  writeFileSync(aboutCopy, aboutBefore.replace("## How I work", "## How I used to work"));
+  const aboutHeading = aboutBefore.match(/^## (.+)$/m)[1];
+  writeFileSync(aboutCopy, aboutBefore.replace(`## ${aboutHeading}`, `## ${aboutHeading}, before`));
   writeFileSync(homeHtmlPath, homeHtmlBefore.replace("</head>", '<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Jane Doe","url":"https://example.org"}]}</script>\n</head>'));
   build(dir);
   const port3 = port + 2;
@@ -232,7 +233,7 @@ try {
     assert(ok, "check still passes when the copies drift");
     assert(has("headline", "Designer of everything."), "check flags a headline that is not on the home page");
     assert(has("contact phone", "+1 555 0100"), "check flags a contact detail the site doesn't show");
-    assert(has("/about", 'heading "How I used to work"') && !has("/about", "How I work\""), "check flags a copy heading that is not on its page");
+    assert(has("/about", `heading "${aboutHeading}, before"`) && !has("/about", `heading "${aboutHeading}"`), "check flags a copy heading that is not on its page");
     assert(has("JSON-LD type", "organization", "person") && has("updated", "304 days ago"), "check flags JSON-LD that disagrees with profile.json and a stale updated date");
     assert(lines.some((l) => /\(\d+ where the files and the site disagree\)/.test(l)), "the summary counts the mismatches");
     assert(!lines.some((l) => l.includes("agree (name")), "no all-clear line when something disagrees");
