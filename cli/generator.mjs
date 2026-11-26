@@ -3,7 +3,7 @@
  * agent-ready-site generator. Self-contained (Node 18+, no dependencies): `init` copies this file into the
  * site as agent-ready/build.mjs and wires it to the site's dev/build scripts.
  *
- * Reads:   agent-ready/site.json        the site's name, handle, URL, contact, /agents copy
+ * Reads:   agent-ready/site.json        the site's type (person or organization), name, handle, URL, contact, /agents copy
  *          agent-ready/pages/*.md       one Markdown copy per public page (frontmatter: path, title, summary, order)
  * Writes (into site.json "outDir", default "public"):
  *          llms.txt, llm.md             index in llmstxt.org format: home text, then a link to each copy
@@ -36,6 +36,9 @@ export function parseFrontmatter(text) {
   return { data, body: match[2].trim() };
 }
 
+/** Who the site is about: one person (a portfolio, a personal site) or an organization (a company, a studio, a project). */
+export const SITE_TYPES = ["person", "organization"];
+
 export function loadContent(root) {
   const dir = join(root, "agent-ready");
   const sitePath = join(dir, "site.json");
@@ -44,6 +47,8 @@ export function loadContent(root) {
   for (const key of ["name", "handle", "url", "headline"]) {
     if (!site[key]) throw new Error(`agent-ready/site.json needs "${key}".`);
   }
+  site.type ??= "person";
+  if (!SITE_TYPES.includes(site.type)) throw new Error(`agent-ready/site.json: "type" must be ${SITE_TYPES.map((t) => `"${t}"`).join(" or ")}, not "${site.type}".`);
   site.url = site.url.replace(/\/+$/, "");
   const pagesDir = join(dir, "pages");
   const pages = existsSync(pagesDir)
@@ -128,6 +133,7 @@ const plain = (text) => text.replace(/\*\*/g, "");
 export function buildProfileJson(content) {
   const { site, pages } = content;
   return {
+    type: site.type ?? "person",
     name: site.name,
     headline: site.headline,
     ...(site.description ? { summary: site.description } : {}),
@@ -321,6 +327,8 @@ export function buildAgentsHtml(content, sizes) {
     })
     .join("");
   const last = row(prompt('<span class="cur blink"></span>'), ' data-k="last"');
+  // A person gets a round avatar; an organization's logo keeps its corners and is never cropped.
+  const org = site.type === "organization";
   const avatar =
     site.avatar && SAFE_URL.test(site.avatar)
       ? `<img src="${esc(site.avatar.startsWith("/") && !site.avatar.startsWith("//") ? base + site.avatar : site.avatar)}" alt="" width="40" height="40">`
@@ -354,6 +362,8 @@ a:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:c
 .bar .av{display:flex;align-items:center;justify-content:center;border-right:1px solid var(--border);padding:.75rem 0}
 .bar .av a{display:block;border-radius:50%;text-decoration:none}
 .bar .av img,.ini{display:flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;border-radius:50%;object-fit:cover;background:var(--muted);color:var(--foreground);font-size:13px;font-weight:600}
+.bar .av.org a,.bar .av.org img,.bar .av.org .ini{border-radius:calc(var(--radius) - 2px)}
+.bar .av.org img{object-fit:contain;background:transparent}
 .bar .fn{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0 1rem 0 .75rem;color:var(--muted-foreground);min-width:0;font-size:13px}
 .bar .fn .file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:${mono}}
 .bar .meta{display:flex;align-items:center;gap:1rem;flex-shrink:0}
@@ -387,7 +397,7 @@ a:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:c
 </head>
 <body>
 <main class="win">
-<div class="bar"><div class="av"><a href="${esc(home)}" aria-label="${esc(site.name)}, back to the home page">${avatar}</a></div><div class="fn"><span class="file">${esc(handle)}.md</span><span class="meta"><span class="x">Markdown</span><span class="x">UTF-8</span><a href="${esc(home)}">Back to the site</a></span></div></div>
+<div class="bar"><div class="av${org ? " org" : ""}"><a href="${esc(home)}" aria-label="${esc(site.name)}, back to the home page">${avatar}</a></div><div class="fn"><span class="file">${esc(handle)}.md</span><span class="meta"><span class="x">Markdown</span><span class="x">UTF-8</span><a href="${esc(home)}">Back to the site</a></span></div></div>
 <div class="lines">${body}${last}</div>
 </main>
 <script>

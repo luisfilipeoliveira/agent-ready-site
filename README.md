@@ -80,6 +80,9 @@ node agent-ready/build.mjs
 npx agent-ready-site check http://localhost:3000
 ```
 
+`check` also warns if robots.txt or the host's bot protection turns AI crawlers away from `/llms.txt`. It tests
+robots.txt rules and User-Agent blocks; blocks that verify the crawler's IP can't be seen from outside.
+
 The spec and the recipes for each framework are in
 [`skills/agent-ready-site/references/`](skills/agent-ready-site/references/).
 
