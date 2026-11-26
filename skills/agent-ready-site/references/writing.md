@@ -10,7 +10,7 @@
 - Pricing: keep every plan's name, price, billing period and currency exactly as shown, with the features each plan lists. If prices depend on a toggle (monthly or yearly, a region), include each option the page shows and say which is which. A comparison table stays a table.
 
 ## Language
-- Every copy is in English, and so is every file name (`about.md`, never `sobre.md`). See `spec.md` for the `markdown` field that gives a non-English URL an English copy name.
+- Every copy is in English, and so is every file name (`about.md`, never `sobre.md`). The one exception is a multilingual site's further languages (`agent-ready/pages/<lang>/`): those copies hold the site's own words in that language, never a translation (`spec.md`, "Languages"). See `spec.md` for the `markdown` field that gives a non-English URL an English copy name.
 - If the site is in another language, translate it faithfully: the same meaning, the same order, the same headings. No additions, no omissions, no rewording beyond what plain English needs.
 - Keep as the site shows them: names of people, companies, brands and products, numbers, prices and currencies, dates, email addresses and URLs.
 - Testimonials and quotes: translate the quote and keep the person's name and role (translate the role).

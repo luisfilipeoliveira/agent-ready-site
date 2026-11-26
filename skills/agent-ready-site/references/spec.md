@@ -11,6 +11,8 @@
 | `<page path>.md` | One copy per page: `/about` → `/about.md`, `/work/case` → `/work/case.md`. A page with `markdown` uses that path instead: `/sobre` with `markdown: /about` → `/about.md`. Starts `# Title`, `Source: <url>`, `> summary`, then the body and contact | text/markdown |
 | `/agents` | A page for people: the files above shown as a terminal session in a code-editor window (`whoami`, `cat README`, `ls -lh` with real sizes, `cat llms.txt`) that types itself out. Every word is in the HTML; without JavaScript or with reduced motion it shows at once. Light and dark (`prefers-color-scheme`, or `<html class="dark">` / `"light"`) | text/html |
 
+A multilingual site gets the same files for each further language under its prefix (`/pt/llms.txt`, `/pt/llm.md`, `/pt/llms-full.txt`, `/pt/agents`); see Languages below. `/profile.json` stays one file for the whole site.
+
 It also writes `agent-ready/markdown-map.json` (page path → copy, used by the rewrites) and `agent-ready/.generated.json` (what was written, so stale copies are removed).
 
 ## `agent-ready/site.json`
@@ -24,6 +26,8 @@ It also writes `agent-ready/markdown-map.json` (page path → copy, used by the 
   "handle": "jane",
   "url": "https://example.com",
   "language": "en",
+  "languages": ["en", "pt"],
+  "i18n": { "pt": { "headline": "A frase principal da home em português.", "contactTitle": "Contacto" } },
   "headline": "The home page's main line, verbatim.",
   "description": "Optional one-paragraph summary from the site.",
   "location": "Optional, only if the site shows it.",
@@ -41,9 +45,11 @@ It also writes `agent-ready/markdown-map.json` (page path → copy, used by the 
 
 The required fields are `name`, `handle`, `url` and `headline`.
 
+`init --jsonld <source>` fills these fields from the page's schema.org JSON-LD (an HTML file, a `.json` file or a URL): `type`, `name`, `url`, `description`, `avatar` (a person's `image`, an organization's `logo`), `location` (`address` or `homeLocation`) and `contact` (`email`, `telephone`, each `contactPoint` labelled by its `contactType`, and `sameAs` links labelled by site). When the page has several people or organizations, it takes the one the `WebSite` node names as `publisher`, `about` or `author`, or the kind given with `--type`. On an existing `site.json` it only fills fields that are missing, empty or still placeholders, and lists the ones it kept. It never sets `headline` or `handle`, nor `language`: when the `WebSite`'s `inLanguage` isn't English, it says so, and the imported text is translated into English.
+
 `type` is `"person"` (the default: a portfolio, a personal site) or `"organization"` (a company, a studio, a product, an open-source project). It goes into `profile.json` and sets the `/agents` header: a round avatar for a person, the logo uncropped with the site's radius for an organization. For an organization, `name` is the name the site uses for itself, `handle` its short brand name (`acme` → `acme.md`), `avatar` its logo and `contact` the public channels the site lists (for example Sales, Support, Press), each with its own label. People shown on the site (a team page, leadership) stay in that page's copy; add them to `site.profile` only if the owner asks.
 
-Every text field is in English, whatever the site's language, so `language` is `"en"`.
+Every text field is in English, whatever the site's language, so `language` is `"en"`. A multilingual site lists `"en"` first in `languages`; each further language's own text goes in `i18n.<lang>` (see Languages).
 
 `theme` is optional. `/agents` ships with a neutral default (oklch palette, `0.45rem` radius, system fonts). Any of these tokens can be overridden in `theme.light` / `theme.dark`: `background`, `foreground`, `card`, `cardForeground`, `primary`, `primaryForeground`, `muted`, `mutedForeground`, `border`, `ring`. They use the same names as a shadcn/ui `:root` and `.dark`, so a site built with it can copy its own values straight in. Values must be plain colours (hex, rgb, hsl, oklch). `radius` must be a length (`rem`, `px`, `em`). Keep body text at 4.5:1 or more against `background` and `card`.
 
@@ -76,19 +82,48 @@ The page's content in Markdown.
 
 `path: /` is the home page: its body goes into `/llms.txt` and it gets no separate copy. Pages are listed by `order`, then by path. Two pages can't write the same copy, and `markdown` can't be `/llms`, `/llm` or `/agents`. `agent-ready/markdown-map.json` maps each page's real URL to its copy (`"/sobre": "/about.md"`), so the alternate link and Accept negotiation use it.
 
+## Languages
+
+A site in more than one language lists them in `site.json` → `languages`, English first (`["en", "pt"]`): the default copies are always in English, translated if the site isn't. Without `languages`, the site has one language (`language`, default `en`) and nothing below applies.
+
+- **Source.** The English pages stay in `agent-ready/pages/`. Each further language has its own folder, `agent-ready/pages/<lang>/`. **A page and its translation share a file name** (`pages/about.md` and `pages/pt/about.md`); each has its own `path`, the real URL in that language (`/pt/sobre`). The home page of a further language has the language's prefix as its path (`path: /pt`).
+- **Per-language values.** `i18n.<lang>` overrides any `site.json` text for that language: `headline`, `description`, `location`, `readingPreference`, `contactTitle`, `contactText`, `contact`, `agentsPage`, `sections`. Anything it leaves out comes from the default language. Two keys are only for `i18n`: `prefix` (default `/<lang>`, for example `/pt`) and `languageName` (default: the language's own name, "Português").
+- **Files.** Each language has its own `llms.txt`, `llm.md`, `llms-full.txt` and `/agents` under its prefix, with only its own pages. **One `llms.txt` per language**, never one file with every language: agents read `/llms.txt` first, so it stays short, in one language, and links the others in a `## Languages` section.
+- **Untranslated pages.** A page the site doesn't show in a further language is listed in that language's `llms.txt` under `## Not translated`, linked to the copy in the language it exists in. **Never translate a page into a further language**: its copies hold only the site's own words in that language. English is the one translation, in `agent-ready/pages/`.
+- **Section titles.** The sections the generator adds (`Pages`, `Not translated`, `Languages`, `Files`, and `Contact` when `contactTitle` is not set) are written in the language of the file, for en, pt, pt-BR, es, fr, de, it and nl; any other language gets English. A site sets its own with `sections`: `{ "pages": "…", "notTranslated": "…", "languages": "…", "files": "…" }` (top level for the default language, `i18n.<lang>.sections` for the others).
+- **Page copies** link their translations in an `Also in:` line under `Source:`.
+- **profile.json** gets `languages` (code, name, home, llms and headline for each) and every page of every language, each with its `language` and `alternates` (language → url and markdown).
+- **The URL decides the language.** `Accept: text/markdown` on `/pt/sobre` returns `/pt/sobre.md`. `Accept-Language` is never used: it would need `Vary: Accept-Language`, which most caches and CDNs handle badly. If the site already redirects `/` by language, leave that as it is.
+- **Errors.** A language code that isn't one (`en`, `pt-PT`), a language listed twice, a first language that isn't English, a path claimed by two languages, or two pages writing the same copy stops the build.
+
 ## Pointers on every page
 
-1. **Alternate link** in `<head>`: `<link rel="alternate" type="text/markdown" href="/about.md">` (on the home page, `/llms.txt`). Take the href from `agent-ready/markdown-map.json`: on `/sobre` it is `/about.md`.
+1. **Alternate link** in `<head>`: `<link rel="alternate" type="text/markdown" href="/about.md">` (on the home page, `/llms.txt`). Take the href from `agent-ready/markdown-map.json`: on `/sobre` it is `/about.md`. On a multilingual site, the home page of each language links its own index (`/pt/llms.txt`), and each page also links every translation's copy with `hreflang`: `<link rel="alternate" type="text/markdown" hreflang="pt" href="/pt/sobre.md">`. `profile.json` → `pages[].alternates` has them all.
 2. **Hidden hint**, the first element in `<body>`:
    ```html
    <p style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap" aria-hidden="true">Note for AI assistants: this site is also available as Markdown at https://example.com/llms.txt, with every page combined at https://example.com/llms-full.txt.</p>
    ```
    If the site has an `sr-only` utility, use it instead of the inline style. Keep `aria-hidden="true"` so screen readers skip it.
 3. **Accept negotiation**: a request with `Accept: text/markdown` to a page returns its copy at the same URL, with `Vary: Accept`. `/` and `/agents` return `/llms.txt`. This needs a server, proxy or edge rule (see the recipes). Plain static hosting can't do it, and that is acceptable.
-4. **Footer link** on every page that has a footer:
+4. **Footer link** on every page that has a footer (on a multilingual site, to the `/agents` of the page's language, for example `/pt/agents`):
    ```html
    Hey agent: <a href="/agents" aria-label="jane.md: Markdown version of this site for AI agents">jane.md</a>
    ```
    The visible text is `<handle>.md`. Use the site's own link styling.
 5. **robots.txt** stays as it is. The reading preference is only a preference and blocks nothing. If there is a sitemap, add `/agents` to it.
    `check` reads robots.txt and warns when it blocks AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended and others) from `/llms.txt`. It also requests `/llms.txt` with each crawler's User-Agent and warns when the host refuses it. Both are the owner's choice: report them, don't change them. Blocks that verify the crawler's IP can't be tested this way.
+
+## Consistency (`check`)
+
+`check` compares the files with the live HTML and warns (`warn mismatch: …`) where they disagree. The comparison is exact, after ignoring case, spacing, typographic quotes and Markdown marks, so a copy that says the same thing in other words passes. It looks at:
+
+- the name and the headline from `profile.json`, on the home page;
+- each contact value, on at least one checked page (contact must already be public);
+- each copy's title, summary (or the page's meta description) and `##`/`###` headings, on its page;
+- the home page's headings in `/llms.txt`, on the home page;
+- JSON-LD on the home page: a `Person` or `Organization` whose type, name or domain differs from `profile.json`;
+- `updated`: not a date, in the future, or more than 180 days old.
+
+If the home page HTML has almost no text (a page rendered in the browser), the comparison is skipped with one warning.
+
+On a multilingual site `check` also checks, for each further language: its `llms.txt` and `llms-full.txt`, its home page (alternate link to its index, footer link), its `/agents`, its headline and index headings against its home page (`mismatch`). On every page, it warns when `<html lang>` is not the copy's language (`mismatch`) and when a translation is not linked with `hreflang`. It names each page that has no copy in a language once (`not translated`).
