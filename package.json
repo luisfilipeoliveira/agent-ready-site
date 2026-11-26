@@ -1,0 +1,15 @@
+{
+  "name": "agent-ready-site",
+  "version": "0.1.0",
+  "description": "Make any website readable by AI agents: llms.txt, Markdown copies of every page, a JSON profile, an /agents page and a \"Hey agent\" footer link.",
+  "type": "module",
+  "license": "MIT",
+  "bin": { "agent-ready-site": "cli/bin.mjs" },
+  "files": ["cli", "templates", "skills", ".claude-plugin", "AGENTS.md", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "keywords": ["llms.txt", "ai-agents", "markdown", "portfolio", "claude-code", "skill"],
+  "scripts": {
+    "privacy": "node scripts/privacy-scan.mjs",
+    "test": "node scripts/test.mjs"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "agent-ready-site",
+  "owner": { "name": "agent-ready-site" },
+  "plugins": [
+    {
+      "name": "agent-ready-site",
+      "source": "./",
+      "description": "Make any website readable by AI agents, from its own content."
+    }
+  ]
+}

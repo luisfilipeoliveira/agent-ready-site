@@ -1,0 +1,109 @@
+#!/usr/bin/env node
+// End-to-end test on the static example: init -> fixture content -> build -> pointers -> serve -> check.
+// The Next.js example needs `npm install`, so it is covered by the manual steps in CONTRIBUTING.md.
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { init } from "../cli/init.mjs";
+import { build } from "../cli/generator.mjs";
+import { check } from "../cli/check.mjs";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const FIX = join(ROOT, "scripts", "fixtures", "jane");
+const dir = mkdtempSync(join(tmpdir(), "agent-ready-"));
+const assert = (ok, msg) => {
+  if (!ok) throw new Error(msg);
+  console.log(`ok   ${msg}`);
+};
+
+try {
+  cpSync(join(ROOT, "examples", "static-placeholder"), dir, { recursive: true });
+  const { framework, outDir } = init(dir, {});
+  assert(framework === "static" && outDir === ".", "init detects a static site served from its root");
+
+  const site = { framework, outDir, ...JSON.parse(readFileSync(join(FIX, "site.json"), "utf8")) };
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify(site));
+  cpSync(join(FIX, "pages"), join(dir, "agent-ready", "pages"), { recursive: true });
+  build(dir);
+  assert(existsSync(join(dir, "work", "atlas-checkout.md")), "build writes nested page copies");
+
+  // A removed page loses its copy on the next build.
+  rmSync(join(dir, "agent-ready", "pages", "atlas-checkout.md"));
+  build(dir);
+  assert(!existsSync(join(dir, "work", "atlas-checkout.md")), "build removes the copy of a deleted page");
+  cpSync(join(FIX, "pages"), join(dir, "agent-ready", "pages"), { recursive: true });
+  build(dir);
+
+  // ---------- security ----------
+  const pagesDir = join(dir, "agent-ready", "pages");
+  const evil = join(pagesDir, "evil.md");
+
+  writeFileSync(evil, "---\npath: /../../escaped\ntitle: Evil\n---\n\nx\n");
+  let threw = false;
+  try {
+    build(dir);
+  } catch (error) {
+    threw = /plain site path/.test(error.message);
+  }
+  assert(threw && !existsSync(join(dir, "..", "escaped.md")), "a page path with .. is rejected and nothing is written outside");
+  rmSync(evil);
+
+  const outside = join(dir, "..", `keep-${Date.now()}.txt`);
+  writeFileSync(outside, "keep");
+  writeFileSync(join(dir, "agent-ready", ".generated.json"), JSON.stringify(["/../" + outside.split("/").pop(), "/llms.txt"]));
+  build(dir);
+  assert(existsSync(outside), "a tampered ledger entry pointing outside outDir is not deleted");
+  rmSync(outside);
+
+  writeFileSync(evil, "---\npath: /links\ntitle: Links\norder: 99\n---\n\n[click](javascript:alert(1)) and [ok](https://example.com/a)\n");
+  const home = join(pagesDir, "index.md");
+  const homeBefore = readFileSync(home, "utf8");
+  writeFileSync(home, homeBefore + "\n- [bad](javascript:alert(1))\n");
+  const site0 = readFileSync(join(dir, "agent-ready", "site.json"), "utf8");
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(site0), theme: { light: { foreground: "red}</style><script>alert(1)</script>" }, radius: "1rem;}</style>", fontSans: "x</style><script>" } }));
+  const warn = console.warn;
+  console.warn = () => {};
+  build(dir);
+  console.warn = warn;
+  const agents = readFileSync(join(dir, "agents", "index.html"), "utf8");
+  assert(!/href="javascript:/i.test(agents) && agents.includes("[bad](javascript:alert(1))"), "javascript: links on /agents stay plain text");
+  assert(!agents.includes("<script>alert") && agents.split("</style>").length === 2, "unsafe theme values fall back to the defaults");
+  assert(!/<script/i.test(agents) && agents.includes(":root.dark{") && agents.includes("prefers-color-scheme:dark") && agents.includes("--radius:0.45rem"), "/agents has no JavaScript and ships the light, dark and radius tokens");
+  rmSync(evil);
+  writeFileSync(home, homeBefore);
+  writeFileSync(join(dir, "agent-ready", "site.json"), site0);
+  build(dir);
+
+  // What the skill does to each page.
+  const hint = `<p style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap" aria-hidden="true">Note for AI assistants: this site is also available as Markdown at ${site.url}/llms.txt, with every page combined at ${site.url}/llms-full.txt.</p>`;
+  const map = JSON.parse(readFileSync(join(dir, "agent-ready", "markdown-map.json"), "utf8"));
+  for (const [path, md] of Object.entries(map)) {
+    if (path === "/agents") continue;
+    const file = join(dir, path === "/" ? "" : path, "index.html");
+    const html = readFileSync(file, "utf8")
+      .replace("</head>", `<link rel="alternate" type="text/markdown" href="${md}">\n</head>`)
+      .replace("<body>", `<body>\n${hint}`)
+      .replace("</footer>", `<span>Hey agent: <a href="/agents/" aria-label="jane.md: Markdown version of this site for AI agents">jane.md</a></span>\n</footer>`);
+    writeFileSync(file, html);
+  }
+
+  const port = 4300 + Math.floor(Math.random() * 600);
+  const server = spawn(process.execPath, [join(ROOT, "scripts", "serve-static.mjs"), dir, String(port)], { stdio: "ignore" });
+  await new Promise((r) => setTimeout(r, 400));
+  try {
+    const lines = [];
+    const ok = await check(`http://localhost:${port}`, { log: (line) => lines.push(line) });
+    console.log(lines.map((l) => `     ${l}`).join("\n"));
+    assert(ok, "check passes on the agent-ready static site");
+  } finally {
+    server.kill();
+  }
+  console.log("\nAll tests passed.");
+} catch (error) {
+  console.error(`FAIL ${error.message}`);
+  process.exitCode = 1;
+} finally {
+  rmSync(dir, { recursive: true, force: true });
+}
