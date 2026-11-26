@@ -225,7 +225,7 @@ try {
   const otherType = fixtureType === "person" ? "organization" : "person";
   const staleDays = Math.round((new Date("2026-12-01") - new Date(site.updated)) / 86400000);
   writeFileSync(aboutCopy, aboutBefore.replace(`## ${aboutHeading}`, `## ${aboutHeading}, before`));
-  writeFileSync(homeHtmlPath, homeHtmlBefore.replace("</head>", `<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"${otherType === "person" ? "Person" : "Organization"}","name":"Jane Doe","url":"https://example.org"}]}</script>\n</head>`));
+  writeFileSync(homeHtmlPath, homeHtmlBefore.replace("</head>", `<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"${otherType === "person" ? "Person" : "Organization"}","name":${JSON.stringify(site.name)},"url":"https://example.org"}]}</script>\n</head>`));
   build(dir);
   const port3 = port + 2;
   const drifting = spawn(process.execPath, [join(ROOT, "scripts", "serve-static.mjs"), dir, String(port3)], { stdio: "ignore" });
