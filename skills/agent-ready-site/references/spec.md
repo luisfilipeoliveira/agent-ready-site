@@ -7,7 +7,7 @@
 | `/llms.txt` | Index in the [llms.txt](https://llmstxt.org) format: `# Name`, `> headline`, reading preference, the home page's content, a `## Pages` list linking every copy, a `## Files` list and contact | text/plain or text/markdown |
 | `/llm.md` | The same as `/llms.txt` (some agents ask for this name) | text/markdown |
 | `/llms-full.txt` | `/llms.txt` plus every page copy, separated by `---`, with contact once at the end | text/plain |
-| `/profile.json` | The site's public details as JSON: name, headline, summary, location, contact, pages (url and markdown), files, plus anything in `site.profile` | application/json |
+| `/profile.json` | The site's public details as JSON: type, name, headline, summary, location, contact, pages (url and markdown), files, plus anything in `site.profile` | application/json |
 | `<page path>.md` | One copy per page: `/about` → `/about.md`, `/work/case` → `/work/case.md`. Starts `# Title`, `Source: <url>`, `> summary`, then the body and contact | text/markdown |
 | `/agents` | A page for people: the files above shown as a terminal session in a code-editor window (`whoami`, `cat README`, `ls -lh` with real sizes, `cat llms.txt`) that types itself out. Every word is in the HTML; without JavaScript or with reduced motion it shows at once. Light and dark (`prefers-color-scheme`, or `<html class="dark">` / `"light"`) | text/html |
 
@@ -19,6 +19,7 @@ It also writes `agent-ready/markdown-map.json` (page path → copy, used by the 
 {
   "framework": "nextjs",
   "outDir": "public",
+  "type": "person",
   "name": "Jane Doe",
   "handle": "jane",
   "url": "https://example.com",
@@ -39,6 +40,8 @@ It also writes `agent-ready/markdown-map.json` (page path → copy, used by the 
 ```
 
 The required fields are `name`, `handle`, `url` and `headline`.
+
+`type` is `"person"` (the default: a portfolio, a personal site) or `"organization"` (a company, a studio, a product, an open-source project). It goes into `profile.json` and sets the `/agents` header: a round avatar for a person, the logo uncropped with the site's radius for an organization. For an organization, `name` is the name the site uses for itself, `handle` its short brand name (`acme` → `acme.md`), `avatar` its logo and `contact` the public channels the site lists (for example Sales, Support, Press), each with its own label. People shown on the site (a team page, leadership) stay in that page's copy; add them to `site.profile` only if the owner asks.
 
 `theme` is optional. `/agents` ships with a neutral default (oklch palette, `0.45rem` radius, system fonts). Any of these tokens can be overridden in `theme.light` / `theme.dark`: `background`, `foreground`, `card`, `cardForeground`, `primary`, `primaryForeground`, `muted`, `mutedForeground`, `border`, `ring`. They use the same names as a shadcn/ui `:root` and `.dark`, so a site built with it can copy its own values straight in. Values must be plain colours (hex, rgb, hsl, oklch). `radius` must be a length (`rem`, `px`, `em`). Keep body text at 4.5:1 or more against `background` and `card`.
 
@@ -72,3 +75,4 @@ The page's content in Markdown.
    ```
    The visible text is `<handle>.md`. Use the site's own link styling.
 5. **robots.txt** stays as it is. The reading preference is only a preference and blocks nothing. If there is a sitemap, add `/agents` to it.
+   `check` reads robots.txt and warns when it blocks AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended and others) from `/llms.txt`. It also requests `/llms.txt` with each crawler's User-Agent and warns when the host refuses it. Both are the owner's choice: report them, don't change them. Blocks that verify the crawler's IP can't be tested this way.

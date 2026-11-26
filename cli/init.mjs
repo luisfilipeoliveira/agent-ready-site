@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { detect } from "./detect.mjs";
+import { SITE_TYPES } from "./generator.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES = join(HERE, "..", "templates");
@@ -16,15 +17,19 @@ order: 0
 Replace this with the home page's content, in Markdown, in the page's own order and headings.
 `;
 
-function placeholderSite({ framework, outDir, name, handle, url }) {
+function placeholderSite({ framework, outDir, type = "person", name, handle, url }) {
+  const org = type === "organization";
   return {
     framework,
     outDir,
-    name: name ?? "Your Name",
-    handle: handle ?? "you",
+    type,
+    name: name ?? (org ? "Your Organization" : "Your Name"),
+    handle: handle ?? (org ? "yourorg" : "you"),
     url: url ?? "https://example.com",
     language: "en",
-    headline: "One line on who you are and what you do, as the home page says it.",
+    headline: org
+      ? "One line on what the organization does, as the home page says it."
+      : "One line on who you are and what you do, as the home page says it.",
     description: "",
     location: "",
     updated: new Date().toISOString().slice(0, 10),
@@ -72,6 +77,8 @@ export function init(root, options = {}) {
   const found = detect(root);
   const framework = options.framework ?? found.framework;
   const outDir = options.out ?? found.outDir;
+  if (options.type !== undefined && !SITE_TYPES.includes(options.type))
+    throw new Error(`--type must be ${SITE_TYPES.join(" or ")}, not "${options.type}".`);
   const log = [`Detected: ${framework} (files go to ${outDir}/).`];
   const dir = join(root, "agent-ready");
   mkdirSync(join(dir, "pages"), { recursive: true });
