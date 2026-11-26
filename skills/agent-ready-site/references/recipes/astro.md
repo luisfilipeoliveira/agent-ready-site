@@ -21,6 +21,18 @@ const md = map[path];
 ```
 If the project has no `sr-only` class, use the inline style from the spec.
 
+On a multilingual site (Astro's `i18n` config), `map[path]` already gives each language's copy. Add the translations too, from `profile.json`:
+```astro
+---
+import profile from "../../public/profile.json";
+const site = new URL(profile.url).pathname.replace(/\/+$/, "");
+const entry = profile.pages.find((p) => new URL(p.url).pathname === site + path);
+const alternates = Object.entries(entry?.alternates ?? {});
+---
+{alternates.map(([lang, a]) => <link rel="alternate" type="text/markdown" hreflang={lang} href={new URL(a.markdown).pathname} />)}
+```
+Give the hint and the footer link each language's paths (`/pt/llms.txt`, `/pt/agents`).
+
 ## Accept negotiation
 - In SSR or hybrid mode, add `src/middleware.ts`. When the `accept` header includes `text/markdown` and `map[path]` exists, return `context.rewrite(map[path])` and set `Vary: Accept`.
 - In static mode, use host rules (see `static-html.md`).

@@ -26,6 +26,8 @@ a:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:c
 .bar .av{display:flex;align-items:center;justify-content:center;border-right:1px solid var(--border);padding:.75rem 0}
 .bar .av a{display:block;border-radius:50%;text-decoration:none}
 .bar .av img,.ini{display:flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;border-radius:50%;object-fit:cover;background:var(--muted);color:var(--foreground);font-size:13px;font-weight:600}
+.bar .av.org a,.bar .av.org img,.bar .av.org .ini{border-radius:calc(var(--radius) - 2px)}
+.bar .av.org img{object-fit:contain;background:transparent}
 .bar .fn{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0 1rem 0 .75rem;color:var(--muted-foreground);min-width:0;font-size:13px}
 .bar .fn .file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace, "SF Mono", Menlo, Consolas, monospace}
 .bar .meta{display:flex;align-items:center;gap:1rem;flex-shrink:0}

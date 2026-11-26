@@ -11,6 +11,8 @@
 | `<page path>.md` | One copy per page: `/about` → `/about.md`, `/work/case` → `/work/case.md`. Starts `# Title`, `Source: <url>`, `> summary`, then the body and contact | text/markdown |
 | `/agents` | A page for people: the files above shown as a terminal session in a code-editor window (`whoami`, `cat README`, `ls -lh` with real sizes, `cat llms.txt`) that types itself out. Every word is in the HTML; without JavaScript or with reduced motion it shows at once. Light and dark (`prefers-color-scheme`, or `<html class="dark">` / `"light"`) | text/html |
 
+A multilingual site gets the same files for each further language under its prefix (`/pt/llms.txt`, `/pt/llm.md`, `/pt/llms-full.txt`, `/pt/agents`); see Languages below. `/profile.json` stays one file for the whole site.
+
 It also writes `agent-ready/markdown-map.json` (page path → copy, used by the rewrites) and `agent-ready/.generated.json` (what was written, so stale copies are removed).
 
 ## `agent-ready/site.json`
@@ -24,6 +26,8 @@ It also writes `agent-ready/markdown-map.json` (page path → copy, used by the 
   "handle": "jane",
   "url": "https://example.com",
   "language": "en",
+  "languages": ["en", "pt"],
+  "i18n": { "pt": { "headline": "A frase principal da home em português.", "contactTitle": "Contacto" } },
   "headline": "The home page's main line, verbatim.",
   "description": "Optional one-paragraph summary from the site.",
   "location": "Optional, only if the site shows it.",
@@ -62,16 +66,29 @@ The page's content in Markdown.
 
 `path: /` is the home page: its body goes into `/llms.txt` and it gets no separate copy. Pages are listed by `order`, then by path.
 
+## Languages
+
+A site in more than one language lists them in `site.json` → `languages`, default first. Without `languages`, the site has one language (`language`, default `en`) and nothing below applies.
+
+- **Source.** The default language's pages stay in `agent-ready/pages/`. Each further language has its own folder, `agent-ready/pages/<lang>/`. **A page and its translation share a file name** (`pages/about.md` and `pages/pt/about.md`); each has its own `path`, the real URL in that language (`/pt/sobre`). The home page of a further language has the language's prefix as its path (`path: /pt`).
+- **Per-language values.** `i18n.<lang>` overrides any `site.json` text for that language: `headline`, `description`, `location`, `readingPreference`, `contactTitle`, `contactText`, `contact`, `agentsPage`. Anything it leaves out comes from the default language. Two keys are only for `i18n`: `prefix` (default `/<lang>`, for example `/pt`) and `languageName` (default: the language's own name, "Português").
+- **Files.** Each language has its own `llms.txt`, `llm.md`, `llms-full.txt` and `/agents` under its prefix, with only its own pages. **One `llms.txt` per language**, never one file with every language: agents read `/llms.txt` first, so it stays short, in one language, and links the others in a `## Languages` section.
+- **Untranslated pages.** A page with no copy in a language is listed in that language's `llms.txt` under `## Not translated`, linked to the copy in the language it exists in. **Never translate a page**: only the site's own words go into the copies.
+- **Page copies** link their translations in an `Also in:` line under `Source:`.
+- **profile.json** gets `languages` (code, name, home, llms and headline for each) and every page of every language, each with its `language` and `alternates` (language → url and markdown).
+- **The URL decides the language.** `Accept: text/markdown` on `/pt/sobre` returns `/pt/sobre.md`. `Accept-Language` is never used: it would need `Vary: Accept-Language`, which most caches and CDNs handle badly. If the site already redirects `/` by language, leave that as it is.
+- **Errors.** A language code that isn't one (`en`, `pt-PT`), a language listed twice, or a path claimed by two languages stops the build.
+
 ## Pointers on every page
 
-1. **Alternate link** in `<head>`: `<link rel="alternate" type="text/markdown" href="/about.md">` (on the home page, `/llms.txt`).
+1. **Alternate link** in `<head>`: `<link rel="alternate" type="text/markdown" href="/about.md">` (on the home page, `/llms.txt`). On a multilingual site, the home page of each language links its own index (`/pt/llms.txt`), and each page also links every translation's copy with `hreflang`: `<link rel="alternate" type="text/markdown" hreflang="pt" href="/pt/sobre.md">`. `profile.json` → `pages[].alternates` has them all.
 2. **Hidden hint**, the first element in `<body>`:
    ```html
    <p style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap" aria-hidden="true">Note for AI assistants: this site is also available as Markdown at https://example.com/llms.txt, with every page combined at https://example.com/llms-full.txt.</p>
    ```
    If the site has an `sr-only` utility, use it instead of the inline style. Keep `aria-hidden="true"` so screen readers skip it.
 3. **Accept negotiation**: a request with `Accept: text/markdown` to a page returns its copy at the same URL, with `Vary: Accept`. `/` and `/agents` return `/llms.txt`. This needs a server, proxy or edge rule (see the recipes). Plain static hosting can't do it, and that is acceptable.
-4. **Footer link** on every page that has a footer:
+4. **Footer link** on every page that has a footer (on a multilingual site, to the `/agents` of the page's language, for example `/pt/agents`):
    ```html
    Hey agent: <a href="/agents" aria-label="jane.md: Markdown version of this site for AI agents">jane.md</a>
    ```
@@ -91,3 +108,5 @@ The page's content in Markdown.
 - `updated`: not a date, in the future, or more than 180 days old.
 
 If the home page HTML has almost no text (a page rendered in the browser), the comparison is skipped with one warning.
+
+On a multilingual site `check` also checks, for each further language: its `llms.txt` and `llms-full.txt`, its home page (alternate link to its index, footer link), its `/agents`, its headline and index headings against its home page (`mismatch`). On every page, it warns when `<html lang>` is not the copy's language (`mismatch`) and when a translation is not linked with `hreflang`. It names each page that has no copy in a language once (`not translated`).

@@ -60,6 +60,7 @@ export async function check(base, { log = console.log, now = new Date() } = {}) 
     const pagePath = local(page.url);
     const { res, text } = await get(pagePath);
     if (res?.status === 200) copies.set(page, { path: pagePath, markdown, html: text });
+    if (res?.status === 200 && page.language) checkPageLanguage(page, pagePath, text, { local, warn });
     if (res?.status !== 200) fail(pagePath, `status ${res?.status}`);
     else if (!new RegExp(`rel=["']alternate["'][^>]*type=["']text/markdown["'][^>]*href=["'][^"']*${escapeRe(path)}["']|type=["']text/markdown["'][^>]*href=["'][^"']*${escapeRe(path)}["'][^>]*rel=["']alternate["']|href=["'][^"']*${escapeRe(path)}["'][^>]*rel=["']alternate["']`, "i").test(text))
       fail(`${pagePath} alternate link`, `no <link rel="alternate" type="text/markdown" href="${path}">`);
@@ -89,6 +90,40 @@ export async function check(base, { log = console.log, now = new Date() } = {}) 
     else fail("/agents", `status ${res?.status ?? "none"}${res?.status === 200 ? ", but it is not the agents page" : ""}`);
   }
 
+  // Further languages: each has its own index, full file, home page and /agents.
+  const languages = profile?.languages ?? [];
+  const llmsByLanguage = new Map(languages.length ? [[languages[0].language, llms]] : []);
+  const languageHomes = [];
+  for (const l of languages.slice(1)) {
+    const llmsPath = local(l.llms);
+    const prefix = llmsPath.replace(/\/llms\.txt$/, "");
+    llmsByLanguage.set(l.language, await markdownFile(llmsPath));
+    await markdownFile(`${prefix}/llms-full.txt`);
+    const homePath = local(l.home);
+    const { res, text } = await get(homePath);
+    if (res?.status !== 200) fail(homePath, `status ${res?.status}`);
+    else {
+      languageHomes.push({ ...l, path: homePath, html: text, llmsPath, llms: llmsByLanguage.get(l.language) });
+      if (new RegExp(`type=["']text/markdown["'][^>]*${escapeRe(llmsPath)}|${escapeRe(llmsPath)}["'][^>]*type=["']text/markdown["']`).test(text)) pass(`${homePath} links ${llmsPath} as its Markdown copy`);
+      else fail(`${homePath} alternate link`, `no <link rel="alternate" type="text/markdown" href="${llmsPath}">`);
+      if (/Hey agent:?\s*(<!--.*?-->\s*)*<a[^>]+href=["'][^"']*\/agents\/?["']/is.test(text)) pass(`${homePath} footer has the 'Hey agent' link`);
+      else fail(`${homePath} footer link`, "no 'Hey agent: <handle>.md' link to /agents");
+      checkPageLanguage({ language: l.language }, homePath, text, { local, warn });
+    }
+    const agents = await get(`${prefix}/agents`);
+    if (agents.res?.status === 200 && /<html/i.test(agents.text) && agents.text.includes(llmsPath)) pass(`${prefix}/agents renders`);
+    else fail(`${prefix}/agents`, `status ${agents.res?.status ?? "none"}${agents.res?.status === 200 ? ", but it is not the agents page" : ""}`);
+  }
+
+  // Pages missing in a language. Each is named once, in the first language that has it.
+  const order = languages.map((l) => l.language);
+  for (const lang of order) {
+    const missing = pages.filter(
+      (p) => p.language && p.language !== lang && !p.alternates?.[lang] && !Object.keys(p.alternates ?? {}).some((a) => order.indexOf(a) < order.indexOf(p.language)),
+    );
+    if (missing.length) warn(`not translated (${lang})`, `${missing.map((p) => local(p.url)).join(", ")} ${missing.length === 1 ? "has" : "have"} no ${lang} copy; ${lang} readers get the original (listed under "Not translated")`);
+  }
+
   // Accept negotiation: needs a server or edge rule, so a static host may not have it.
   {
     const { res, text } = await get("/", { Accept: "text/markdown" });
@@ -106,12 +141,15 @@ export async function check(base, { log = console.log, now = new Date() } = {}) 
   }
 
   if (llms && pages.length) {
-    const missing = pages.filter((page) => !llms.includes(page.markdown));
-    if (missing.length) fail("/llms.txt index", `does not link ${missing.map((p) => p.markdown).join(", ")}`);
-    else pass("/llms.txt links every page copy");
+    // Each language's index links its own pages; a single-language site has only /llms.txt.
+    const indexOf = (page) => (page.language && llmsByLanguage.has(page.language) ? llmsByLanguage.get(page.language) : llms);
+    const missing = pages.filter((page) => indexOf(page) && !indexOf(page).includes(page.markdown));
+    const names = languages.length > 1 ? "each llms.txt links every page copy in its language" : "/llms.txt links every page copy";
+    if (missing.length) fail("llms.txt index", `does not link ${missing.map((p) => p.markdown).join(", ")}`);
+    else pass(names);
   }
 
-  if (profile) checkConsistency({ profile, llms, homeHtml, copies, now }, { pass, warn });
+  if (profile) checkConsistency({ profile, llms, homeHtml, copies, languageHomes, now }, { pass, warn });
   await checkCrawlers(base, { get, pass, warn });
 
   for (const r of results) {
@@ -291,16 +329,28 @@ export function siteFromJsonLd(html, { type } = {}) {
   return { fields, notes };
 }
 
+/**
+ * A copy without the contact section the generator adds at its end. That section's title is the site's own
+ * (contactTitle, per language), so it is found by its content: the last `##` section, listing a contact value.
+ */
+function withoutContact(markdown, contact = {}) {
+  const at = markdown.lastIndexOf("\n## ");
+  const values = Object.values(contact).map(String).filter(Boolean);
+  if (at < 0 || !values.length) return markdown;
+  const tail = markdown.slice(at);
+  return values.some((v) => tail.includes(`: ${v}`)) ? markdown.slice(0, at) : markdown;
+}
+
 const STALE_DAYS = 180;
 // The sections the generator adds to llms.txt after the home page's own text.
-const GENERATED_SECTIONS = ["Pages", "Files", "Contact"];
+const GENERATED_SECTIONS = ["Pages", "Not translated", "Languages", "Files", "Contact"];
 
 /**
  * Where the agent files and the live HTML disagree: words the copies carry that the site doesn't show, or
  * details the site shows differently. Exact comparisons only, so a warning always names what to look at; a
  * copy that says the same thing in other words is not caught. All of these warn, never fail.
  */
-export function checkConsistency({ profile, llms, homeHtml, copies, now = new Date() }, { pass, warn }) {
+export function checkConsistency({ profile, llms, homeHtml, copies, languageHomes = [], now = new Date() }, { pass, warn }) {
   const homeText = htmlText(homeHtml);
   const allText = [homeText, ...[...copies.values()].map((c) => htmlText(c.html))].join(" ");
   const allHtml = [homeHtml, ...[...copies.values()].map((c) => c.html)].join(" ");
@@ -333,14 +383,23 @@ export function checkConsistency({ profile, llms, homeHtml, copies, now = new Da
     if (page.title && !text.includes(markdownText(page.title))) missing.push(`title "${page.title}"`);
     if (page.summary && !text.includes(markdownText(page.summary)) && !metaDescription(copy.html).includes(markdownText(page.summary)))
       missing.push(`summary "${page.summary}"`);
-    for (const h of headings(copy.markdown ?? "", { stopAt: ["Contact"] })) if (!text.includes(markdownText(h))) missing.push(`heading "${h}"`);
+    for (const h of headings(withoutContact(copy.markdown ?? "", profile.contact), { stopAt: ["Contact"] })) if (!text.includes(markdownText(h))) missing.push(`heading "${h}"`);
     if (missing.length) flag(copy.path, `the Markdown copy has ${missing.join(", ")}, not on the page`);
   }
 
   // The home page's own text in llms.txt.
   if (llms) {
-    const missing = headings(llms, { stopAt: GENERATED_SECTIONS }).filter((h) => !homeText.includes(markdownText(h)));
+    const missing = headings(withoutContact(llms, profile.contact), { stopAt: GENERATED_SECTIONS }).filter((h) => !homeText.includes(markdownText(h)));
     if (missing.length) flag("/llms.txt", `has heading${missing.length === 1 ? "" : "s"} ${missing.map((h) => `"${h}"`).join(", ")}, not on the home page`);
+  }
+
+  // Each further language: its headline and its index's headings on its own home page.
+  for (const l of languageHomes) {
+    const text = htmlText(l.html);
+    if (text.length < 80) continue;
+    if (l.headline && !text.includes(markdownText(l.headline))) flag(`${l.path} headline`, `"${l.headline}" (${l.language}) is not on ${l.path}`);
+    const missing = l.llms ? headings(withoutContact(l.llms, profile.contact), { stopAt: GENERATED_SECTIONS }).filter((h) => !text.includes(markdownText(h))) : [];
+    if (missing.length) flag(l.llmsPath, `has heading${missing.length === 1 ? "" : "s"} ${missing.map((h) => `"${h}"`).join(", ")}, not on ${l.path}`);
   }
 
   // JSON-LD on the home page: who the site says it is, in structured data.
@@ -473,6 +532,24 @@ async function checkCrawlers(base, { get, pass, warn }) {
   }
   if (refused.length) warn("AI crawler User-Agents", `/llms.txt is refused to ${refused.join(", ")}; check the host's firewall or bot protection`);
   else pass(`/llms.txt answers the ${AI_CRAWLERS.filter((c) => c.ua).length} AI crawler User-Agents (IP-verified blocks can't be tested from here)`);
+}
+
+/**
+ * A page in a multilingual site: its <html lang> is the copy's language, and its head links each translation's
+ * copy with hreflang, so an agent on one language finds the others.
+ */
+function checkPageLanguage(page, pagePath, html, { local, warn }) {
+  const declared = /<html\b[^>]*\blang=["']([^"']+)["']/i.exec(html)?.[1];
+  const primary = (code) => String(code).toLowerCase().split("-")[0];
+  if (declared && primary(declared) !== primary(page.language))
+    warn(`mismatch: ${pagePath} language`, `<html lang="${declared}">, but its copy is ${page.language}`);
+  const missing = Object.entries(page.alternates ?? {}).filter(([lang, alt]) => {
+    const href = escapeRe(local(alt.markdown));
+    const lang_ = escapeRe(lang);
+    return !new RegExp(`<link\\b(?=[^>]*hreflang=["']${lang_}["'])(?=[^>]*href=["'][^"']*${href}["'])[^>]*>`, "i").test(html);
+  });
+  if (missing.length)
+    warn(`${pagePath} hreflang`, `no <link rel="alternate" type="text/markdown" hreflang="…"> for ${missing.map(([lang, alt]) => `${lang} (${local(alt.markdown)})`).join(", ")}`);
 }
 
 function escapeRe(s) {

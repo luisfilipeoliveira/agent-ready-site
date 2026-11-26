@@ -80,6 +80,10 @@ node agent-ready/build.mjs
 npx agent-ready-site check http://localhost:3000
 ```
 
+A site in several languages lists them in `site.json` (`"languages": ["en", "pt"]`) and keeps each language's
+pages in `agent-ready/pages/<lang>/`. Each language gets its own `llms.txt` and `/agents` under its prefix, and
+pages without a translation are linked in their original language, never translated.
+
 If the site already has schema.org JSON-LD, `init --jsonld http://localhost:3000` (or a built HTML or `.json`
 file) fills the name, URL, description, logo, location and contact from it. The headline and handle stay yours.
 
