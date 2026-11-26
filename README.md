@@ -1,6 +1,9 @@
 # agent-ready-site
 
-![agent-ready-site: make any website readable by AI agents](docs/cover.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/cover-dark.png">
+  <img src="docs/cover.png" alt="agent-ready-site: make any website readable by AI agents. An editor window runs ls -lh and cat llms.txt next to the footer link Hey agent: you.md">
+</picture>
 
 Make your website readable by AI agents, generated from the site's own content.
 
