@@ -34,7 +34,7 @@ everything above on every build.
 ### With Claude Code (recommended)
 
 ```bash
-/plugin marketplace add OWNER/agent-ready-site
+/plugin marketplace add luisfilipeoliveira/agent-ready-site
 /plugin install agent-ready-site@agent-ready-site
 ```
 

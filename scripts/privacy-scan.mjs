@@ -30,6 +30,16 @@ const terms = existsSync(listPath)
   : [];
 if (!terms.length) console.log(`privacy-scan: no denylist at ${listPath}, skipping term checks.`);
 
+// Exact strings that may appear although they contain a denylisted term (e.g. the repo's own owner/name
+// path). Kept outside the repo too: ~/.config/agent-ready-site/allow.txt or $AGENT_READY_ALLOWLIST.
+const allowPath = process.env.AGENT_READY_ALLOWLIST ?? join(homedir(), ".config", "agent-ready-site", "allow.txt");
+const allowed = existsSync(allowPath)
+  ? readFileSync(allowPath, "utf8")
+      .split("\n")
+      .map((line) => line.trim().toLowerCase())
+      .filter((line) => line && !line.startsWith("#"))
+  : [];
+
 const files = (staged ? git(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]) : git(["ls-files", "--cached", "--others", "--exclude-standard"]))
   .split("\n")
   .filter(Boolean)
@@ -39,7 +49,8 @@ const read = (file) => (staged ? git(["show", `:${file}`]) : readFileSync(file, 
 function scanText(label, text) {
   text.split("\n").forEach((line, i) => {
     if (line.includes("privacy-allow")) return;
-    const lower = line.toLowerCase();
+    let lower = line.toLowerCase();
+    for (const ok of allowed) lower = lower.split(ok).join(" ");
     for (const term of terms) if (lower.includes(term)) problems.push(`${label}:${i + 1}: denylisted "${term}"`);
   });
 }

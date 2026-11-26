@@ -12,7 +12,8 @@
 - The examples stay **pristine** (no agent layer): they are what the skill starts from.
 - Placeholder content only. `npm run privacy` scans the repo against a denylist kept outside it
   (`~/.config/agent-ready-site/denylist.txt` or `$AGENT_READY_DENYLIST`); the pre-commit hook in `.githooks/`
-  runs it on staged files (`git config core.hooksPath .githooks`).
+  runs it on staged files (`git config core.hooksPath .githooks`). Exact strings that may contain a denylisted term (such as
+  this repo's own owner/name) go in `~/.config/agent-ready-site/allow.txt` (or `$AGENT_READY_ALLOWLIST`).
 - Before publishing, run the full scan: `AGENT_READY_COMPARE=<path to the site this was extracted from> npm run privacy -- --history`.
   It also checks every commit and commit email, and fails on any 7-word phrase shared with that folder.
 - `cli/generator.mjs` is copied into every site as `agent-ready/build.mjs`, so it must stay dependency-free and
