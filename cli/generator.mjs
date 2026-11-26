@@ -157,6 +157,32 @@ export function loadContent(root) {
 
 // ---------- Markdown ----------
 
+/**
+ * Titles of the sections the generator adds, in the site's language. A language not listed here gets English;
+ * any title can be set in site.json "sections" (or i18n.<lang>.sections): { pages, notTranslated, languages, files }.
+ * The contact section's title is site.json "contactTitle", and these are only its default.
+ */
+export const SECTION_TITLES = {
+  en: { pages: "Pages", notTranslated: "Not translated", languages: "Languages", files: "Files", contact: "Contact" },
+  pt: { pages: "Páginas", notTranslated: "Sem tradução", languages: "Línguas", files: "Ficheiros", contact: "Contacto" },
+  "pt-br": { pages: "Páginas", notTranslated: "Sem tradução", languages: "Idiomas", files: "Arquivos", contact: "Contato" },
+  es: { pages: "Páginas", notTranslated: "Sin traducir", languages: "Idiomas", files: "Archivos", contact: "Contacto" },
+  fr: { pages: "Pages", notTranslated: "Non traduit", languages: "Langues", files: "Fichiers", contact: "Contact" },
+  de: { pages: "Seiten", notTranslated: "Nicht übersetzt", languages: "Sprachen", files: "Dateien", contact: "Kontakt" },
+  it: { pages: "Pagine", notTranslated: "Non tradotto", languages: "Lingue", files: "File", contact: "Contatti" },
+  nl: { pages: "Pagina's", notTranslated: "Niet vertaald", languages: "Talen", files: "Bestanden", contact: "Contact" },
+};
+
+/** The section titles for a site (already merged with its language's i18n values). */
+export function sectionTitles(site) {
+  const code = String(site.language ?? "en").toLowerCase();
+  const base = SECTION_TITLES[code] ?? SECTION_TITLES[code.split("-")[0]] ?? SECTION_TITLES.en;
+  const own = site.sections && typeof site.sections === "object" ? site.sections : {};
+  const out = { ...base };
+  for (const key of Object.keys(base)) if (typeof own[key] === "string" && own[key].trim()) out[key] = own[key].trim();
+  return out;
+}
+
 const list = (items) => items.map((item) => `- ${item}`).join("\n");
 const section = (title, ...body) => [`## ${title}`, ...body.filter(Boolean)].join("\n\n");
 const doc = (...parts) => parts.filter((part) => part).join("\n\n") + "\n";
@@ -176,7 +202,7 @@ export function agentFiles({ site, pages, prefix = "" }) {
 
 function contact({ site }) {
   if (!site.contact?.length) return "";
-  return section(site.contactTitle ?? "Contact", site.contactText ?? "", list(site.contact.map((c) => `${c.label}: ${c.value}`)));
+  return section(site.contactTitle ?? sectionTitles(site).contact, site.contactText ?? "", list(site.contact.map((c) => `${c.label}: ${c.value}`)));
 }
 
 /** The other languages' entry points, and the pages this language doesn't have (linked in the language they are in). */
@@ -184,16 +210,18 @@ function languageSections(content) {
   if (!content.multi) return [];
   const { site } = content;
   const others = content.languages.filter((l) => l !== content);
+  const titles = sectionTitles(site);
   return [
     content.untranslated?.length
-      ? section("Not translated", list(content.untranslated.map((u) => `[${u.page.title}](${site.url}${mdPath(u.page)}) (${u.name})`)))
+      ? section(titles.notTranslated, list(content.untranslated.map((u) => `[${u.page.title}](${site.url}${mdPath(u.page)}) (${u.name})`)))
       : "",
-    others.length ? section("Languages", list(others.map((l) => `[${l.name}](${site.url}${l.prefix}/llms.txt) (${l.lang})`))) : "",
+    others.length ? section(titles.languages, list(others.map((l) => `[${l.name}](${site.url}${l.prefix}/llms.txt) (${l.lang})`))) : "",
   ];
 }
 
 export function buildLlmsTxt(content, { withContact = true } = {}) {
   const { site, home, pages, prefix = "" } = content;
+  const titles = sectionTitles(site);
   return doc(
     `# ${site.name}`,
     `> ${site.headline}`,
@@ -202,9 +230,9 @@ export function buildLlmsTxt(content, { withContact = true } = {}) {
       [site.readingPreference && `Reading preference: ${site.readingPreference}`, site.updated && `Updated: ${site.updated}`].filter(Boolean),
     ),
     home?.body ?? "",
-    pages.length ? section("Pages", list(pages.map((p) => `[${p.title}](${site.url}${mdPath(p)})${p.summary ? `: ${p.summary}` : ""}`))) : "",
+    pages.length ? section(titles.pages, list(pages.map((p) => `[${p.title}](${site.url}${mdPath(p)})${p.summary ? `: ${p.summary}` : ""}`))) : "",
     ...languageSections(content),
-    section("Files", list(agentFiles(content).map((f) => `[${f.path}](${site.url}${f.path}): ${f.description}`))),
+    section(titles.files, list(agentFiles(content).map((f) => `[${f.path}](${site.url}${f.path}): ${f.description}`))),
     withContact ? contact(content) : "",
   );
 }

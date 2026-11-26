@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { init } from "../cli/init.mjs";
-import { build } from "../cli/generator.mjs";
+import { build, sectionTitles } from "../cli/generator.mjs";
 import { check, parseRobots, robotsAllows, siteFromJsonLd } from "../cli/check.mjs";
 import { addPointers } from "./lib/pointers.mjs";
 
@@ -282,7 +282,9 @@ try {
     const pt = readFileSync(join(bi, "pt", "llms.txt"), "utf8");
     assert(en.includes("## Languages\n\n- [Português](https://example.com/pt/llms.txt) (pt)") && !en.includes("Not translated"), "/llms.txt links the other language's index");
     assert(pt.startsWith("# Jane Doe\n\n> Designer de produto") && pt.includes("[Sobre](https://example.com/pt/sobre.md)") && pt.includes("## Contacto"), "/pt/llms.txt uses the Portuguese pages and site.json overrides");
-    assert(pt.includes("## Not translated\n\n- [Atlas checkout](https://example.com/work/atlas-checkout.md) (English)") && pt.includes("- [English](https://example.com/llms.txt) (en)"), "/pt/llms.txt lists untranslated pages in their own language, never a made-up translation");
+    assert(pt.includes("## Sem tradução\n\n- [Atlas checkout](https://example.com/work/atlas-checkout.md) (English)") && pt.includes("## Línguas\n\n- [English](https://example.com/llms.txt) (en)"), "/pt/llms.txt lists untranslated pages in their own language, never a made-up translation");
+    assert(["## Páginas", "## Sem tradução", "## Línguas", "## Ficheiros", "## Contacto"].every((t) => pt.includes(t)) && !/## (Pages|Files|Languages|Not translated)\b/.test(pt), "/pt/llms.txt has its generated section titles in Portuguese");
+    assert(["## Pages", "## Languages", "## Files", "## Contact"].every((t) => en.includes(t)), "/llms.txt keeps its section titles in English");
     assert(readFileSync(join(bi, "about.md"), "utf8").includes("Also in: [Português](https://example.com/pt/sobre.md)") && existsSync(join(bi, "pt", "sobre.md")) && existsSync(join(bi, "pt", "llms-full.txt")), "page copies link their translations; each language has its full file");
     const biProfile = JSON.parse(readFileSync(join(bi, "profile.json"), "utf8"));
     const biAbout = biProfile.pages.find((p) => p.url === "https://example.com/about");
@@ -291,6 +293,16 @@ try {
     assert(biMap["/pt"] === "/pt/llms.txt" && biMap["/pt/agents"] === "/pt/llms.txt" && biMap["/pt/sobre"] === "/pt/sobre.md", "markdown-map.json covers each language's paths");
     const ptAgents = readFileSync(join(bi, "pt", "agents", "index.html"), "utf8");
     assert(ptAgents.includes('<html lang="pt">') && ptAgents.includes('href="/pt/"') && ptAgents.includes('rel="canonical" href="https://example.com/pt/agents"'), "/pt/agents is in Portuguese and links back to /pt/");
+
+    // Section titles: a language without built-in titles falls back to English; a site can set its own.
+    const titleSite = (extra) => sectionTitles({ ...biSite, ...extra });
+    assert(titleSite({ language: "pt-BR" }).files === "Arquivos" && titleSite({ language: "pt-PT" }).files === "Ficheiros" && titleSite({ language: "ja" }).pages === "Pages", "section titles follow the language and region, with English as the fallback");
+    writeFileSync(join(bi, "agent-ready", "site.json"), JSON.stringify({ ...biSite, i18n: { pt: { ...biSite.i18n.pt, sections: { pages: "Conteúdos", files: 42 } } } }));
+    build(bi);
+    const ptCustom = readFileSync(join(bi, "pt", "llms.txt"), "utf8");
+    assert(ptCustom.includes("## Conteúdos") && ptCustom.includes("## Ficheiros"), "i18n sections set a language's own titles, and ignore values that aren't text");
+    writeFileSync(join(bi, "agent-ready", "site.json"), JSON.stringify(biSite));
+    build(bi);
 
     // Errors: a path two languages claim, and a language code that isn't one.
     writeFileSync(join(ptPages, "clash.md"), "---\npath: /about\ntitle: Clash\n---\n");
