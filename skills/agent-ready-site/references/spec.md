@@ -32,6 +32,7 @@ It also writes `agent-ready/markdown-map.json` (page path → copy, used by the 
   "description": "Optional one-paragraph summary from the site.",
   "location": "Optional, only if the site shows it.",
   "updated": "2026-01-31",
+  "avatar": "/avatar.jpg",
   "readingPreference": "AI tools are welcome to use the Markdown files instead of the HTML pages. This is a preference only; robots.txt blocks nothing.",
   "contactTitle": "Contact",
   "contactText": "Optional line above the contact list.",

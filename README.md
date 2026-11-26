@@ -73,11 +73,13 @@ Clone this repository next to your site and tell your agent:
 
 ### By hand, with the CLI
 
+The package is not on npm yet, so run the CLI from a clone of this repository, from your site's root:
+
 ```bash
-npx agent-ready-site init --name "Jane Doe" --handle jane --url https://example.com
+node ../agent-ready-site/cli/bin.mjs init --name "Jane Doe" --handle jane --url https://example.com
 # write agent-ready/site.json and agent-ready/pages/*.md (see the spec)
 node agent-ready/build.mjs
-npx agent-ready-site check http://localhost:3000
+node ../agent-ready-site/cli/bin.mjs check http://localhost:3000
 ```
 
 A site in several languages lists them in `site.json`, English first (`"languages": ["en", "pt"]`). The English
@@ -102,6 +104,7 @@ The spec and the recipes for each framework are in
 | --- | --- | --- |
 | Next.js (App Router) | `public/` + `proxy.ts` (written by `init`) | Yes, in the proxy |
 | Astro | `public/` | Middleware (SSR) or host rules |
+| SvelteKit | `static/` | Server hook or host rules |
 | Vite SPA | `public/` | Host rules |
 | Plain HTML | next to `index.html` | Host rules (Vercel, Cloudflare); not possible on GitHub Pages |
 
@@ -114,6 +117,7 @@ agent-ready/
   build.mjs        the generator (runs before dev and build)
   markdown-map.json, .generated.json   written by the generator
 public/            llms.txt, llm.md, llms-full.txt, profile.json, the .md copies, agents/index.html
+                   (static/ in SvelteKit, next to index.html on a plain HTML site)
 ```
 
 When your content changes, update the matching file in `agent-ready/pages/` and the build does the rest.

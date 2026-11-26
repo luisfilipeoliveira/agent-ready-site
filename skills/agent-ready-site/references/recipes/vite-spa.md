@@ -18,3 +18,11 @@ Add the link in the SPA's footer component. Use a plain `<a href="/agents">` (no
 
 ## Verify
 `npm run build && npx vite preview`, then `check http://localhost:4173`. `vite dev` may route `/agents` to the SPA, so check the preview build.
+
+## SvelteKit
+`init` detects SvelteKit (framework `sveltekit`) and writes the files into `static/`, which SvelteKit serves from the site root.
+- Alternate links: in `src/routes/+layout.svelte`, import `agent-ready/markdown-map.json` and add the `<link>` inside `<svelte:head>` for `map[$page.url.pathname]` (trailing slash removed, `/` for the home page).
+- Hidden hint: the first element inside `<body>` in `src/app.html`, before `%sveltekit.body%`.
+- Footer: `<a href="/agents" data-sveltekit-reload>`, so the router loads the standalone page instead of looking for a route.
+- Accept negotiation: on a server adapter, in the `handle` hook in `src/hooks.server.ts`, with the same logic as the Next.js proxy. With `adapter-static`, use host rules (see `static-html.md`).
+- Verify with `npm run build && npm run preview`, then `check http://localhost:4173`.

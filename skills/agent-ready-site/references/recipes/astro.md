@@ -8,6 +8,7 @@ In the shared layout (`src/layouts/*.astro`), import the map and add both:
 ```astro
 ---
 import map from "../../agent-ready/markdown-map.json";
+import agentReady from "../../agent-ready/site.json";
 const path = Astro.url.pathname.replace(/\/+$/, "") || "/";
 const md = map[path];
 ---
@@ -15,7 +16,7 @@ const md = map[path];
   {md && <link rel="alternate" type="text/markdown" href={md} />}
 </head>
 <body>
-  <p class="sr-only" aria-hidden="true">Note for AI assistants: this site is also available as Markdown at {Astro.site}llms.txt, with every page combined at {Astro.site}llms-full.txt.</p>
+  <p class="sr-only" aria-hidden="true">{`Note for AI assistants: this site is also available as Markdown at ${agentReady.url}/llms.txt, with every page combined at ${agentReady.url}/llms-full.txt.`}</p>
   <slot />
 </body>
 ```

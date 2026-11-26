@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 /**
  * Which kind of site this is. Order matters: a Next or Astro site also depends on React or Vite.
- * Returns { framework: "nextjs" | "astro" | "vite" | "static", outDir, srcDir }.
+ * Returns { framework: "nextjs" | "astro" | "sveltekit" | "vite" | "static", outDir, srcDir }.
  */
 export function detect(root) {
   const pkgPath = join(root, "package.json");
@@ -17,6 +17,8 @@ export function detect(root) {
     return { framework: "nextjs", outDir: "public", srcDir, pkg };
   }
   if (has("astro") || any("astro.config.mjs", "astro.config.ts", "astro.config.js")) return { framework: "astro", outDir: "public", pkg };
+  // SvelteKit also depends on Vite, but serves its public files from static/, not public/.
+  if (has("@sveltejs/kit")) return { framework: "sveltekit", outDir: "static", pkg };
   if (has("vite") || any("vite.config.js", "vite.config.ts", "vite.config.mjs")) return { framework: "vite", outDir: "public", pkg };
   // Plain HTML: files are served from the folder that holds index.html.
   const outDir = existsSync(join(root, "index.html")) ? "." : existsSync(join(root, "public", "index.html")) ? "public" : ".";
