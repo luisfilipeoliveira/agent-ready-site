@@ -80,6 +80,9 @@ node agent-ready/build.mjs
 npx agent-ready-site check http://localhost:3000
 ```
 
+If the site already has schema.org JSON-LD, `init --jsonld http://localhost:3000` (or a built HTML or `.json`
+file) fills the name, URL, description, logo, location and contact from it. The headline and handle stay yours.
+
 `check` also warns if robots.txt or the host's bot protection turns AI crawlers away from `/llms.txt`. It tests
 robots.txt rules and User-Agent blocks; blocks that verify the crawler's IP can't be seen from outside. It also
 warns where the files and the live pages disagree: a headline, a contact detail or a heading the site doesn't

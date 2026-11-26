@@ -183,25 +183,112 @@ const metaDescription = (html) => {
   return normalise(decodeEntities(/content=["']([^"']*)["']/i.exec(tag)?.[1] ?? ""));
 };
 
-/** schema.org Person or Organization nodes in the page's JSON-LD (blocks, arrays and @graph). */
-export function jsonLdEntities(html) {
-  const out = [];
+// ---------- JSON-LD ----------
+
+const ORG_TYPE = /Organization$|^(Corporation|LocalBusiness|NGO|Store|Restaurant|ProfessionalService)$/;
+const kindOf = (node) => {
+  const types = [].concat(node?.["@type"] ?? []).map(String);
+  return types.includes("Person") ? "person" : types.some((t) => ORG_TYPE.test(t)) ? "organization" : null;
+};
+
+/**
+ * Every JSON-LD node on the page (blocks, arrays and @graph, nested values included), plus a resolver for
+ * {"@id": ...} references. Blocks that don't parse are skipped: they are the site's own problem.
+ */
+export function jsonLdNodes(html) {
+  const nodes = [];
+  const byId = new Map();
   const visit = (node) => {
     if (Array.isArray(node)) return node.forEach(visit);
     if (!node || typeof node !== "object") return;
-    if (node["@graph"]) visit(node["@graph"]);
-    const types = [].concat(node["@type"] ?? []).map(String);
-    const kind = types.includes("Person") ? "person" : types.some((t) => /Organization$|^(Corporation|LocalBusiness|NGO)$/.test(t)) ? "organization" : null;
-    if (kind && typeof node.name === "string") out.push({ kind, name: node.name, url: typeof node.url === "string" ? node.url : "" });
+    nodes.push(node);
+    if (typeof node["@id"] === "string" && Object.keys(node).length > 1) byId.set(node["@id"], node);
+    for (const [key, value] of Object.entries(node)) if (key !== "@context" && value && typeof value === "object") visit(value);
   };
   for (const m of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     try {
       visit(JSON.parse(m[1]));
     } catch {
-      // Broken JSON-LD is the site's own problem, and not one this check reports.
+      // skipped
     }
   }
+  const resolve = (value) => (value && typeof value === "object" && !Array.isArray(value) && typeof value["@id"] === "string" && byId.get(value["@id"])) || value;
+  return { nodes, resolve };
+}
+
+/** schema.org Person or Organization nodes in the page's JSON-LD, one per @id. */
+export function jsonLdEntities(html) {
+  const seen = new Set();
+  const out = [];
+  for (const node of jsonLdNodes(html).nodes) {
+    const kind = kindOf(node);
+    if (!kind || typeof node.name !== "string") continue;
+    const key = node["@id"] ?? node;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ kind, name: node.name, url: typeof node.url === "string" ? node.url : "", node });
+  }
   return out;
+}
+
+const LINK_LABELS = { "linkedin.com": "LinkedIn", "github.com": "GitHub", "x.com": "X", "twitter.com": "X", "instagram.com": "Instagram", "dribbble.com": "Dribbble", "behance.net": "Behance", "youtube.com": "YouTube", "facebook.com": "Facebook", "mastodon.social": "Mastodon", "bsky.app": "Bluesky", "medium.com": "Medium" };
+const str = (v) => (typeof v === "string" ? v.trim() : "");
+const titleCase = (s) => s.replace(/\b\w/g, (c) => c.toUpperCase());
+
+/**
+ * site.json fields from the page's JSON-LD: type, name, url, description, avatar (image or logo), location,
+ * language and contact (email, telephone, contactPoint, sameAs). Never the headline: that is the home page's
+ * main line, which JSON-LD doesn't carry. `type` picks the entity when the page has both a Person and an
+ * Organization. Returns { fields, notes }: notes say what was found and what to check.
+ */
+export function siteFromJsonLd(html, { type } = {}) {
+  const { nodes, resolve } = jsonLdNodes(html);
+  const all = jsonLdEntities(html);
+  const notes = [];
+  if (!all.length) return { fields: {}, notes: ["No schema.org Person or Organization in the JSON-LD: nothing imported."] };
+  // The site's own entity: the one the WebSite node points to, else the only one of the asked type, else the first.
+  const website = nodes.find((n) => [].concat(n["@type"] ?? []).includes("WebSite"));
+  const pointed = website && ["about", "publisher", "author", "creator"].map((k) => resolve(website[k])).find((n) => kindOf(n));
+  const pick = (type && all.find((e) => e.kind === type)) || (pointed && all.find((e) => e.node === pointed || e.node["@id"] === pointed["@id"])) || all[0];
+  const node = pick.node;
+  if (all.length > 1) notes.push(`JSON-LD has ${all.length} people or organizations; used "${pick.name}" (${pick.kind}). Pass --type to pick the other kind.`);
+
+  const fields = { type: pick.kind, name: pick.name };
+  if (str(node.url)) fields.url = str(node.url).replace(/\/+$/, "");
+  if (str(node.description)) fields.description = str(node.description);
+  const image = resolve(pick.kind === "organization" ? node.logo ?? node.image : node.image ?? node.logo);
+  const imageUrl = str(Array.isArray(image) ? resolve(image[0])?.url ?? image[0] : image?.url ?? image);
+  if (/^(https?:\/\/|\/(?!\/))/i.test(imageUrl)) fields.avatar = imageUrl;
+
+  const place = resolve(node.address ?? node.homeLocation ?? node.location);
+  const address = resolve(place?.address ?? place);
+  if (typeof address === "string") fields.location = address.trim();
+  else if (address && typeof address === "object") {
+    const country = resolve(address.addressCountry);
+    const parts = [str(address.addressLocality), str(address.addressRegion), str(country?.name ?? country)].filter(Boolean);
+    if (parts.length) fields.location = [...new Set(parts)].join(", ");
+  }
+  const language = str([].concat(website?.inLanguage ?? [])[0]);
+  if (language) fields.language = language;
+
+  const contact = [];
+  const add = (label, value) => value && !contact.some((c) => c.value === value) && contact.push({ label, value });
+  add("Email", str(node.email).replace(/^mailto:/i, ""));
+  add("Phone", str(node.telephone).replace(/^tel:/i, ""));
+  for (const point of [].concat(node.contactPoint ?? []).map(resolve)) {
+    const label = str(point?.contactType) ? titleCase(str(point.contactType)) : "Contact";
+    add(`${label} email`.replace(/^Contact email$/, "Email"), str(point?.email).replace(/^mailto:/i, ""));
+    add(`${label} phone`.replace(/^Contact phone$/, "Phone"), str(point?.telephone).replace(/^tel:/i, ""));
+  }
+  for (const link of [].concat(node.sameAs ?? []).map(str).filter((u) => /^https?:\/\//i.test(u))) {
+    const host = new URL(link).host.replace(/^www\./, "");
+    add(LINK_LABELS[host] ?? host, link);
+  }
+  if (contact.length) fields.contact = contact;
+
+  notes.push(`Imported from JSON-LD: ${Object.keys(fields).join(", ")}.`);
+  notes.push("JSON-LD is in the HTML but not always on the page: keep only what visitors see (check warns on the rest). The headline still has to come from the home page.");
+  return { fields, notes };
 }
 
 const STALE_DAYS = 180;

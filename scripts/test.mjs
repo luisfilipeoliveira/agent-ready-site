@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { init } from "../cli/init.mjs";
 import { build } from "../cli/generator.mjs";
-import { check, parseRobots, robotsAllows } from "../cli/check.mjs";
+import { check, parseRobots, robotsAllows, siteFromJsonLd } from "../cli/check.mjs";
 import { addPointers } from "./lib/pointers.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -120,6 +120,35 @@ try {
     assert(flagError.includes("--type must be person or organization"), "init rejects an unknown --type");
   } finally {
     rmSync(orgDir, { recursive: true, force: true });
+  }
+
+  // JSON-LD as a source for site.json: @graph, @id references, the WebSite's publisher, contact points, sameAs.
+  const ldHtml = `<html><head><script type="application/ld+json">${JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      { "@type": "WebSite", url: "https://example.com/", inLanguage: "pt-PT", publisher: { "@id": "#org" } },
+      { "@type": "Person", "@id": "#founder", name: "Jane Doe" },
+      { "@type": "Organization", "@id": "#org", name: "Example Co", url: "https://example.com/", description: "Tools for example teams.", logo: { "@type": "ImageObject", url: "https://example.com/logo.svg" }, address: { "@id": "#addr" }, founder: { "@id": "#founder" }, contactPoint: [{ "@type": "ContactPoint", contactType: "sales", email: "mailto:sales@example.com" }, { "@type": "ContactPoint", contactType: "customer support", telephone: "+1 555 0100" }], sameAs: ["https://www.linkedin.com/company/example", "https://github.com/example", "https://example.social/@co"] },
+      { "@type": "PostalAddress", "@id": "#addr", addressLocality: "Braga", addressCountry: { "@type": "Country", name: "Portugal" } },
+    ],
+  })}</script><script type="application/ld+json">{ broken</script></head></html>`;
+  const fromLd = siteFromJsonLd(ldHtml);
+  assert(fromLd.fields.type === "organization" && fromLd.fields.name === "Example Co" && fromLd.fields.url === "https://example.com", "JSON-LD import picks the entity the WebSite publishes, and skips broken blocks");
+  assert(fromLd.fields.avatar === "https://example.com/logo.svg" && fromLd.fields.location === "Braga, Portugal" && fromLd.fields.language === "pt-PT" && fromLd.fields.description === "Tools for example teams.", "JSON-LD import resolves @id references for the logo, address and language");
+  assert(JSON.stringify(fromLd.fields.contact) === JSON.stringify([{ label: "Sales email", value: "sales@example.com" }, { label: "Customer Support phone", value: "+1 555 0100" }, { label: "LinkedIn", value: "https://www.linkedin.com/company/example" }, { label: "GitHub", value: "https://github.com/example" }, { label: "example.social", value: "https://example.social/@co" }]), "JSON-LD import turns contact points and sameAs into labelled contacts");
+  assert(siteFromJsonLd(ldHtml, { type: "person" }).fields.name === "Jane Doe" && !("headline" in fromLd.fields), "--type picks the other entity, and the headline never comes from JSON-LD");
+  assert(Object.keys(siteFromJsonLd("<html></html>").fields).length === 0, "a page without JSON-LD imports nothing");
+  const ldDir = mkdtempSync(join(tmpdir(), "agent-ready-ld-"));
+  try {
+    const fresh = init(ldDir, { framework: "static", out: ".", jsonld: ldHtml });
+    const ldSite = JSON.parse(readFileSync(join(ldDir, "agent-ready", "site.json"), "utf8"));
+    assert(ldSite.type === "organization" && ldSite.name === "Example Co" && ldSite.headline.includes("what the organization does") && ldSite.handle === "yourorg" && fresh.log.some((l) => l.includes("filled type, name")), "init --jsonld fills a new site.json and leaves the headline and handle to the owner");
+    writeFileSync(join(ldDir, "agent-ready", "site.json"), JSON.stringify({ ...ldSite, name: "Example Company", description: "", contact: [] }));
+    const again = init(ldDir, { jsonld: ldHtml });
+    const merged = JSON.parse(readFileSync(join(ldDir, "agent-ready", "site.json"), "utf8"));
+    assert(merged.name === "Example Company" && merged.description === "Tools for example teams." && merged.contact.length === 5 && again.log.some((l) => l.includes("kept your name")), "init --jsonld on an existing site.json fills only empty fields and reports the rest");
+  } finally {
+    rmSync(ldDir, { recursive: true, force: true });
   }
 
   // robots.txt parsing for the AI crawler check (RFC 9309: own group over *, longest rule wins, allow wins ties).
