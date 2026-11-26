@@ -12,7 +12,7 @@ import { check, parseRobots, robotsAllows, siteFromJsonLd } from "../cli/check.m
 import { addPointers } from "./lib/pointers.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const FIX = join(ROOT, "scripts", "fixtures", "jane");
+const FIX = join(ROOT, "scripts", "fixtures", "bike-shop");
 const dir = mkdtempSync(join(tmpdir(), "agent-ready-"));
 const assert = (ok, msg) => {
   if (!ok) throw new Error(msg);
@@ -28,12 +28,12 @@ try {
   writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify(site));
   cpSync(join(FIX, "pages"), join(dir, "agent-ready", "pages"), { recursive: true });
   build(dir);
-  assert(existsSync(join(dir, "work", "atlas-checkout.md")), "build writes nested page copies");
+  assert(existsSync(join(dir, "services", "bike-fitting.md")), "build writes nested page copies");
 
   // A removed page loses its copy on the next build.
-  rmSync(join(dir, "agent-ready", "pages", "atlas-checkout.md"));
+  rmSync(join(dir, "agent-ready", "pages", "bike-fitting.md"));
   build(dir);
-  assert(!existsSync(join(dir, "work", "atlas-checkout.md")), "build removes the copy of a deleted page");
+  assert(!existsSync(join(dir, "services", "bike-fitting.md")), "build removes the copy of a deleted page");
   cpSync(join(FIX, "pages"), join(dir, "agent-ready", "pages"), { recursive: true });
   build(dir);
 
@@ -124,11 +124,17 @@ try {
   writeFileSync(join(dir, "agent-ready", "site.json"), siteBase);
   build(dir);
 
-  // Organization mode: type in profile.json, the logo uncropped on /agents, a clear error on an unknown type.
-  const person = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
-  assert(person.type === "person" && readFileSync(join(dir, "agents", "index.html"), "utf8").includes('<div class="av">'), "a site.json without type is a person");
+  // Organization mode (the fixture's own): type in profile.json, the logo uncropped on /agents.
+  // Person mode: a site.json without type. And a clear error on an unknown type.
+  const fixtureProfile = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
+  assert(fixtureProfile.type === "organization" && readFileSync(join(dir, "agents", "index.html"), "utf8").includes('<div class="av org">'), "the bike shop fixture is an organization");
   const siteOrg = readFileSync(join(dir, "agent-ready", "site.json"), "utf8");
-  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteOrg), type: "organization", name: "Example Co", handle: "example", avatar: "/logo.svg" }));
+  const { type: _type, ...personSite } = JSON.parse(siteOrg);
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...personSite, name: "Jane Doe", handle: "jane" }));
+  build(dir);
+  const person = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
+  assert(person.type === "person" && person.name === "Jane Doe" && readFileSync(join(dir, "agents", "index.html"), "utf8").includes('<div class="av">'), "a site.json without type is a person");
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteOrg), name: "Example Co", handle: "example", avatar: "/logo.svg" }));
   build(dir);
   const orgProfile = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
   const orgAgents = readFileSync(join(dir, "agents", "index.html"), "utf8");

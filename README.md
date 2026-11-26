@@ -14,9 +14,9 @@ read rendered layouts guess: they miss text in carousels, misread cards, and inv
 `agent-ready-site` gives them the same content as your pages, in plain Markdown, and shows people that
 it's there with a small link in the footer:
 
-> Hey agent: **jane.md**
+> Hey agent: **examplebikes.md**
 
-<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Jane Doe, product designer; hello@example.com; Hey agent: jane.md" width="600">
+<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Example Bikes, 1 Example Street, Sample Town; hello@example.com; Hey agent: examplebikes.md" width="600">
 
 ## What it adds to your site
 

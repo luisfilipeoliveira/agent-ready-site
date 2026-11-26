@@ -4,9 +4,9 @@
 - Next.js example, by hand:
   ```bash
   cp -R examples/next-placeholder /tmp/next-test && cd /tmp/next-test && npm install
-  node <repo>/cli/bin.mjs init --name "Jane Doe" --handle jane --url https://example.com
+  node <repo>/cli/bin.mjs init --type organization --name "Example Bikes" --handle examplebikes --url https://example.com
   ```
-  Then fill `agent-ready/` from `scripts/fixtures/jane/`, add the alternates, hint and footer link as in
+  Then fill `agent-ready/` from `scripts/fixtures/bike-shop/`, add the alternates, hint and footer link as in
   `skills/agent-ready-site/references/recipes/nextjs-app-router.md`, `npm run build && npx next start`, and
   `node <repo>/cli/bin.mjs check http://localhost:3000`. Every check should pass, Accept negotiation included.
 - The examples stay **pristine** (no agent layer): they are what the skill starts from.
