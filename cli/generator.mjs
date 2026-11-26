@@ -4,14 +4,16 @@
  * site as agent-ready/build.mjs and wires it to the site's dev/build scripts.
  *
  * Reads:   agent-ready/site.json        the site's type (person or organization), name, handle, URL, contact, /agents copy
- *          agent-ready/pages/*.md       one Markdown copy per public page (frontmatter: path, title, summary, order)
- *          agent-ready/pages/<lang>/*.md  the same for each further language in site.json "languages"; a page and
- *                                       its translation share a file name
+ *          agent-ready/pages/*.md       one Markdown copy per public page, in English (frontmatter: path, title, summary,
+ *                                       order, and markdown when the page's URL is not in English)
+ *          agent-ready/pages/<lang>/*.md  the same for each further language in site.json "languages", in that
+ *                                       language's own words; a page and its translation share a file name
  * Writes (into site.json "outDir", default "public"):
  *          llms.txt, llm.md             index in llmstxt.org format: home text, then a link to each copy
  *          llms-full.txt                everything in one file
  *          profile.json                 the site's public details as structured data
- *          <page path>.md               one copy per page (/about -> about.md, /work/x -> work/x.md)
+ *          <page path>.md               one copy per page (/about -> about.md, /work/x -> work/x.md;
+ *                                       /sobre with markdown: /about -> about.md)
  *          agents/index.html            the /agents page: the files as a terminal session in an editor window
  *          <prefix>/llms.txt, …         for each further language: its own index, full file and /agents page
  *          and agent-ready/markdown-map.json  page path -> Markdown copy, for Accept: text/markdown rewrites
@@ -55,7 +57,11 @@ function readPages(dir, label) {
       // The path becomes a file name: plain URL characters only, no "." or ".." segments.
       if (!/^\/[A-Za-z0-9._~\-/]*$/.test(path) || path.split("/").some((seg) => seg === "." || seg === ".."))
         throw new Error(`${label}/${file}: path "${data.path}" must be a plain site path like /about or /work/case`);
-      return { file, path, title: data.title, summary: data.summary ?? "", order: data.order ?? 100, body };
+      // The English path of the copy, for a page whose URL is in another language (/sobre -> /about.md).
+      const markdown = data.markdown ? "/" + String(data.markdown).replace(/^\/+|\/+$|\.md$/g, "") : path;
+      if (data.markdown && (!/^\/[A-Za-z0-9._~\-/]+$/.test(markdown) || markdown.split("/").some((seg) => seg === "." || seg === "..")))
+        throw new Error(`${label}/${file}: markdown "${data.markdown}" must be a plain site path like /about or /work/case`);
+      return { file, label, path, markdown, title: data.title, summary: data.summary ?? "", order: data.order ?? 100, body };
     })
     .sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
 }
@@ -94,6 +100,8 @@ export function loadContent(root) {
   const codes = multi ? site.languages : [site.language ?? "en"];
   for (const code of codes) if (typeof code !== "string" || !LANGUAGE.test(code)) throw new Error(`agent-ready/site.json: "${code}" is not a language code like "en" or "pt-PT".`);
   if (new Set(codes.map((c) => c.toLowerCase())).size !== codes.length) throw new Error(`agent-ready/site.json: "languages" lists a language twice.`);
+  // The default copies are always in English (translated if the site isn't); further languages keep their own words.
+  if (multi && !/^en(-|$)/i.test(codes[0])) throw new Error(`agent-ready/site.json: the first of "languages" must be English ("en"), not "${codes[0]}". The default copies are in English; list the site's other languages after it.`);
   site.language = codes[0];
 
   const pagesDir = join(dir, "pages");
@@ -119,6 +127,18 @@ export function loadContent(root) {
       seen.set(page.path, l.lang);
     }
 
+  // One copy, one page: no two pages write the same .md, and none overwrites a generated file.
+  const copies = new Map();
+  for (const l of languages) {
+    const reserved = new Set([`${l.prefix}/llms`, `${l.prefix}/llm`, `${l.prefix}/agents`]);
+    for (const page of l.pages) {
+      if (reserved.has(page.markdown)) throw new Error(`${page.label}/${page.file}: the copy ${page.markdown}.md clashes with a generated file. Set another "markdown" path.`);
+      if (copies.has(page.markdown))
+        throw new Error(`${page.label}/${page.file} and ${copies.get(page.markdown)} both write ${page.markdown}.md. Give one of them another "markdown" path.`);
+      copies.set(page.markdown, `${page.label}/${page.file}`);
+    }
+  }
+
   // Translations share a file name. Each page learns its translations; each language, what it lacks.
   for (const l of languages) {
     l.multi = multi;
@@ -140,7 +160,7 @@ export function loadContent(root) {
 const list = (items) => items.map((item) => `- ${item}`).join("\n");
 const section = (title, ...body) => [`## ${title}`, ...body.filter(Boolean)].join("\n\n");
 const doc = (...parts) => parts.filter((part) => part).join("\n\n") + "\n";
-const mdPath = (page) => `${page.path}.md`;
+const mdPath = (page) => `${page.markdown ?? page.path}.md`;
 
 export function agentFiles({ site, pages, prefix = "" }) {
   return [

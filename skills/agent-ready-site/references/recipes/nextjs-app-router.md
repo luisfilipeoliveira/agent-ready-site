@@ -17,7 +17,7 @@ In each page's `metadata` (or `generateMetadata`). Next replaces `alternates` pe
 ```ts
 alternates: { canonical: "/about", types: { "text/markdown": "/about.md" } },
 ```
-For dynamic routes (`[slug]`), build the path in `generateMetadata`: `` `/work/${slug}.md` ``. Each slug needs its own `agent-ready/pages/*.md`.
+For dynamic routes (`[slug]`), build the path in `generateMetadata`: `` `/work/${slug}.md` ``. Each slug needs its own `agent-ready/pages/*.md`. If a page's URL is not in English, its copy has an English name (`/sobre` → `/about.md`): take the href from `agent-ready/markdown-map.json` instead of adding `.md` to the path.
 
 ## Hidden hint
 The first child of `<body>` in `app/layout.tsx`, using the site's `sr-only` class if it has one:

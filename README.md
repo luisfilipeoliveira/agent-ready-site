@@ -23,7 +23,7 @@ it's there with a small link in the footer:
 | URL | What it is |
 | --- | --- |
 | `/llms.txt` (and `/llm.md`) | The index, in the [llms.txt](https://llmstxt.org) format: your home page, links to every page copy, and contact |
-| `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md` |
+| `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md`. Always in English: a page in another language is translated, and its copy gets an English name (`/sobre` → `/about.md`) |
 | `/llms-full.txt` | Everything in one file |
 | `/profile.json` | Name, headline, pages and contact as JSON |
 | `/agents` | A page for people: the files, shown as a terminal session in a code-editor window that types itself out (no-JS and reduced-motion fallbacks, light and dark) |
@@ -80,9 +80,10 @@ node agent-ready/build.mjs
 npx agent-ready-site check http://localhost:3000
 ```
 
-A site in several languages lists them in `site.json` (`"languages": ["en", "pt"]`) and keeps each language's
-pages in `agent-ready/pages/<lang>/`. Each language gets its own `llms.txt` and `/agents` under its prefix, and
-pages without a translation are linked in their original language, never translated.
+A site in several languages lists them in `site.json`, English first (`"languages": ["en", "pt"]`). The English
+copies stay in `agent-ready/pages/`; each further language keeps the site's own words in `agent-ready/pages/<lang>/`
+and gets its own `llms.txt` and `/agents` under its prefix. Pages the site doesn't show in that language are
+linked in the language they exist in, never translated.
 
 If the site already has schema.org JSON-LD, `init --jsonld http://localhost:3000` (or a built HTML or `.json`
 file) fills the name, URL, description, logo, location and contact from it. The headline and handle stay yours.

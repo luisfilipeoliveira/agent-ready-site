@@ -37,8 +37,46 @@ try {
   cpSync(join(FIX, "pages"), join(dir, "agent-ready", "pages"), { recursive: true });
   build(dir);
 
-  // ---------- security ----------
+  // ---------- English copy of a page whose URL is in another language ----------
   const pagesDir = join(dir, "agent-ready", "pages");
+  const contact = join(pagesDir, "contact.md");
+  writeFileSync(contact, "---\npath: /contacto\nmarkdown: /contact\ntitle: Contact\norder: 90\n---\n\nWrite any time.\n");
+  build(dir);
+  const map = JSON.parse(readFileSync(join(dir, "agent-ready", "markdown-map.json"), "utf8"));
+  const contactMd = existsSync(join(dir, "contact.md")) ? readFileSync(join(dir, "contact.md"), "utf8") : "";
+  const llmsTxt = readFileSync(join(dir, "llms.txt"), "utf8");
+  const profileJson = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
+  assert(
+    !existsSync(join(dir, "contacto.md")) &&
+      contactMd.includes("Source: https://example.com/contacto") &&
+      map["/contacto"] === "/contact.md" &&
+      llmsTxt.includes("(https://example.com/contact.md)") &&
+      profileJson.pages.some((p) => p.url === "https://example.com/contacto" && p.markdown === "https://example.com/contact.md"),
+    "markdown: gives a page an English copy name and the map, llms.txt and profile.json point to it",
+  );
+  const clash = join(pagesDir, "clash.md");
+  writeFileSync(clash, "---\npath: /fale-connosco\nmarkdown: /contact\ntitle: Clash\n---\n\nx\n");
+  let clashed = false;
+  try {
+    build(dir);
+  } catch (error) {
+    clashed = /both write \/contact\.md/.test(error.message);
+  }
+  assert(clashed, "two pages with the same copy name are rejected");
+  writeFileSync(clash, "---\npath: /fora\nmarkdown: /../out\ntitle: Clash\n---\n\nx\n");
+  clashed = false;
+  try {
+    build(dir);
+  } catch (error) {
+    clashed = /plain site path/.test(error.message);
+  }
+  assert(clashed && !existsSync(join(dir, "..", "out.md")), "a markdown path with .. is rejected");
+  rmSync(clash);
+  rmSync(contact);
+  build(dir);
+  assert(!existsSync(join(dir, "contact.md")), "build removes the English copy of a deleted page");
+
+  // ---------- security ----------
   const evil = join(pagesDir, "evil.md");
 
   writeFileSync(evil, "---\npath: /../../escaped\ntitle: Evil\n---\n\nx\n");
@@ -134,7 +172,7 @@ try {
   })}</script><script type="application/ld+json">{ broken</script></head></html>`;
   const fromLd = siteFromJsonLd(ldHtml);
   assert(fromLd.fields.type === "organization" && fromLd.fields.name === "Example Co" && fromLd.fields.url === "https://example.com", "JSON-LD import picks the entity the WebSite publishes, and skips broken blocks");
-  assert(fromLd.fields.avatar === "https://example.com/logo.svg" && fromLd.fields.location === "Braga, Portugal" && fromLd.fields.language === "pt-PT" && fromLd.fields.description === "Tools for example teams.", "JSON-LD import resolves @id references for the logo, address and language");
+  assert(fromLd.fields.avatar === "https://example.com/logo.svg" && fromLd.fields.location === "Braga, Portugal" && fromLd.fields.language === undefined && fromLd.notes.some((n) => n.includes('"pt-PT"') && n.includes("English")) && fromLd.fields.description === "Tools for example teams.", "JSON-LD import resolves @id references for the logo and address, and flags a site that isn't in English");
   assert(JSON.stringify(fromLd.fields.contact) === JSON.stringify([{ label: "Sales email", value: "sales@example.com" }, { label: "Customer Support phone", value: "+1 555 0100" }, { label: "LinkedIn", value: "https://www.linkedin.com/company/example" }, { label: "GitHub", value: "https://github.com/example" }, { label: "example.social", value: "https://example.social/@co" }]), "JSON-LD import turns contact points and sameAs into labelled contacts");
   assert(siteFromJsonLd(ldHtml, { type: "person" }).fields.name === "Jane Doe" && !("headline" in fromLd.fields), "--type picks the other entity, and the headline never comes from JSON-LD");
   assert(Object.keys(siteFromJsonLd("<html></html>").fields).length === 0, "a page without JSON-LD imports nothing");
@@ -272,6 +310,32 @@ try {
       badLang = error.message;
     }
     assert(badLang.includes('"portuguese!" is not a language code'), "an invalid language code is rejected");
+    writeFileSync(join(bi, "agent-ready", "site.json"), JSON.stringify({ ...biSite, languages: ["pt", "en"] }));
+    let notEnglish = "";
+    try {
+      build(bi);
+    } catch (error) {
+      notEnglish = error.message;
+    }
+    assert(notEnglish.includes('first of "languages" must be English'), "the default copies are in English: languages starts with en");
+    writeFileSync(join(bi, "agent-ready", "site.json"), JSON.stringify(biSite));
+    writeFileSync(join(ptPages, "clash.md"), "---\npath: /pt/outra\ntitle: Clash\nmarkdown: /pt/sobre\n---\n");
+    let copyClash = "";
+    try {
+      build(bi);
+    } catch (error) {
+      copyClash = error.message;
+    }
+    assert(copyClash.includes("both write /pt/sobre.md"), "two pages in different files can't write the same copy");
+    writeFileSync(join(ptPages, "clash.md"), "---\npath: /pt/outra\ntitle: Clash\nmarkdown: /pt/llms\n---\n");
+    let reservedClash = "";
+    try {
+      build(bi);
+    } catch (error) {
+      reservedClash = error.message;
+    }
+    assert(reservedClash.includes("/pt/llms.md clashes with a generated file"), "a further language's copy can't overwrite its own generated files");
+    rmSync(join(ptPages, "clash.md"));
     writeFileSync(join(bi, "agent-ready", "site.json"), JSON.stringify(biSite));
     build(bi);
 

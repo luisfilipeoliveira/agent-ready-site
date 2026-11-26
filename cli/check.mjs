@@ -274,8 +274,8 @@ const str = (v) => (typeof v === "string" ? v.trim() : "");
 const titleCase = (s) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
 /**
- * site.json fields from the page's JSON-LD: type, name, url, description, avatar (image or logo), location,
- * language and contact (email, telephone, contactPoint, sameAs). Never the headline: that is the home page's
+ * site.json fields from the page's JSON-LD: type, name, url, description, avatar (image or logo), location
+ * and contact (email, telephone, contactPoint, sameAs). Never the headline: that is the home page's
  * main line, which JSON-LD doesn't carry. `type` picks the entity when the page has both a Person and an
  * Organization. Returns { fields, notes }: notes say what was found and what to check.
  */
@@ -306,8 +306,10 @@ export function siteFromJsonLd(html, { type } = {}) {
     const parts = [str(address.addressLocality), str(address.addressRegion), str(country?.name ?? country)].filter(Boolean);
     if (parts.length) fields.location = [...new Set(parts)].join(", ");
   }
+  // The copies are always in English, so `language` stays "en". A site in another language is flagged, not imported.
   const language = str([].concat(website?.inLanguage ?? [])[0]);
-  if (language) fields.language = language;
+  if (language && !/^en(-|$)/i.test(language))
+    notes.push(`The site is in "${language}": write site.json and the page copies in English, as a faithful translation of the imported text. If the site also has other languages, list them after "en" in "languages".`);
 
   const contact = [];
   const add = (label, value) => value && !contact.some((c) => c.value === value) && contact.push({ label, value });
