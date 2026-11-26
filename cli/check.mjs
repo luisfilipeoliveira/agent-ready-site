@@ -2,6 +2,8 @@
  * Checks a running or deployed site against the agent-ready spec (skills/agent-ready-site/references/spec.md).
  * Fails on anything an agent needs; warns on what depends on the host (Accept negotiation on static hosts).
  */
+import { SECTION_TITLES } from "./generator.mjs";
+
 const MARKDOWN_TYPES = /text\/(markdown|plain)/;
 
 export async function check(base, { log = console.log, now = new Date() } = {}) {
@@ -203,14 +205,23 @@ const normalise = (text) =>
 /** Markdown inline text as a visitor reads it: links become their label, emphasis and code marks go. */
 const markdownText = (text) => normalise(text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`]/g, ""));
 
-/** `##` and `###` headings of a Markdown file, up to (not including) the sections the generator adds. */
+/**
+ * `##` and `###` headings of a Markdown file, up to (not including) the sections the generator adds: a known
+ * title, or a `##` section that links the agent files (a title the site set in "sections").
+ */
 function headings(markdown, { stopAt = [] } = {}) {
   const out = [];
-  for (const line of markdown.split("\n")) {
-    const m = /^#{2,3} (.+)$/.exec(line);
+  const lines = markdown.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(#{2,3}) (.+)$/.exec(lines[i]);
     if (!m) continue;
-    if (stopAt.includes(m[1].trim())) break;
-    out.push(m[1].trim());
+    if (stopAt.includes(m[2].trim())) break;
+    if (m[1] === "##" && stopAt.length) {
+      const next = lines.slice(i + 1).findIndex((l) => /^## /.test(l));
+      const body = lines.slice(i + 1, next < 0 ? undefined : i + 1 + next).join("\n");
+      if (/\]\([^)\s]*(\/llms\.txt|\/profile\.json|\.md)\)/.test(body)) break;
+    }
+    out.push(m[2].trim());
   }
   return out;
 }
@@ -343,7 +354,8 @@ function withoutContact(markdown, contact = {}) {
 
 const STALE_DAYS = 180;
 // The sections the generator adds to llms.txt after the home page's own text.
-const GENERATED_SECTIONS = ["Pages", "Not translated", "Languages", "Files", "Contact"];
+// In every language the generator knows, so the home page's own headings end where its sections begin.
+const GENERATED_SECTIONS = [...new Set(Object.values(SECTION_TITLES).flatMap((t) => Object.values(t)))];
 
 /**
  * Where the agent files and the live HTML disagree: words the copies carry that the site doesn't show, or
