@@ -86,6 +86,42 @@ try {
   writeFileSync(join(dir, "agent-ready", "site.json"), siteBase);
   build(dir);
 
+  // Organization mode: type in profile.json, the logo uncropped on /agents, a clear error on an unknown type.
+  const person = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
+  assert(person.type === "person" && readFileSync(join(dir, "agents", "index.html"), "utf8").includes('<div class="av">'), "a site.json without type is a person");
+  const siteOrg = readFileSync(join(dir, "agent-ready", "site.json"), "utf8");
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteOrg), type: "organization", name: "Example Co", handle: "example", avatar: "/logo.svg" }));
+  build(dir);
+  const orgProfile = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
+  const orgAgents = readFileSync(join(dir, "agents", "index.html"), "utf8");
+  assert(orgProfile.type === "organization" && orgProfile.name === "Example Co", "profile.json carries the organization type");
+  assert(orgAgents.includes('<div class="av org">') && orgAgents.includes('src="/logo.svg"') && orgAgents.includes("example.md</span>") && orgAgents.includes(".bar .av.org img{object-fit:contain"), "/agents shows an organization's logo uncropped");
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteOrg), type: "company" }));
+  let typeError = "";
+  try {
+    build(dir);
+  } catch (error) {
+    typeError = error.message;
+  }
+  assert(typeError.includes('"type" must be "person" or "organization"'), "an unknown type is rejected");
+  writeFileSync(join(dir, "agent-ready", "site.json"), siteOrg);
+  build(dir);
+  const orgDir = mkdtempSync(join(tmpdir(), "agent-ready-org-"));
+  try {
+    init(orgDir, { type: "organization", framework: "static", out: "." });
+    const placeholder = JSON.parse(readFileSync(join(orgDir, "agent-ready", "site.json"), "utf8"));
+    assert(placeholder.type === "organization" && placeholder.handle === "yourorg" && placeholder.headline.includes("what the organization does"), "init --type organization writes organization placeholders");
+    let flagError = "";
+    try {
+      init(orgDir, { type: "team" });
+    } catch (error) {
+      flagError = error.message;
+    }
+    assert(flagError.includes("--type must be person or organization"), "init rejects an unknown --type");
+  } finally {
+    rmSync(orgDir, { recursive: true, force: true });
+  }
+
   // robots.txt parsing for the AI crawler check (RFC 9309: own group over *, longest rule wins, allow wins ties).
   const robots = parseRobots("User-agent: *\nDisallow: /private\n\nUser-agent: GPTBot\nUser-agent: CCBot\nDisallow: /\nAllow: /llms.txt$\n\nUser-agent: ClaudeBot\nDisallow: /*.txt\n\nUser-agent: PerplexityBot\nDisallow:\n");
   assert(robotsAllows(robots, "GPTBot", "/llms.txt") && !robotsAllows(robots, "gptbot", "/about.md") && !robotsAllows(robots, "CCBot", "/llms.txt.bak"), "robots.txt: a crawler's own group, with $ anchors and case-insensitive names");

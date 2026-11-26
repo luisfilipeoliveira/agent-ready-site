@@ -7,7 +7,7 @@ import { check } from "./check.mjs";
 const HELP = `agent-ready-site: make a website readable by AI agents.
 
 Usage
-  agent-ready-site init [--name "Jane Doe"] [--handle jane] [--url https://example.com] [--out public] [--framework nextjs|astro|vite|static] [--force]
+  agent-ready-site init [--type person|organization] [--name "Jane Doe"] [--handle jane] [--url https://example.com] [--out public] [--framework nextjs|astro|vite|static] [--force]
       Scaffold agent-ready/ in the current site and wire the build step.
   agent-ready-site build
       Generate llms.txt, the page copies, profile.json and /agents from agent-ready/.

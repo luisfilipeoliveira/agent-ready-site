@@ -6,7 +6,8 @@
 - Write every link as an absolute URL on the production domain (`https://example.com/work/case`). Agents read these files out of context.
 - Use one blank line between blocks, with no HTML, no images and no tables unless the page itself is a table.
 - Testimonials: `> quote` then `>` then `> Name, Role`.
-- Lists of items such as experience, projects or services: one `###` per item, then its lines in the page's order.
+- Lists of items such as experience, projects, services, products or plans: one `###` per item, then its lines in the page's order.
+- Pricing: keep every plan's name, price, billing period and currency exactly as shown, with the features each plan lists. If prices depend on a toggle (monthly or yearly, a region), include each option the page shows and say which is which. A comparison table stays a table.
 
 ## Words
 - Use the site's words. Light edits are allowed only to make text read as prose outside the layout: for example, joining a card's label and value into one sentence, or turning "→" into "to".
