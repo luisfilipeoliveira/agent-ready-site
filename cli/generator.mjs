@@ -4,12 +4,14 @@
  * site as agent-ready/build.mjs and wires it to the site's dev/build scripts.
  *
  * Reads:   agent-ready/site.json        the site's type (person or organization), name, handle, URL, contact, /agents copy
- *          agent-ready/pages/*.md       one Markdown copy per public page (frontmatter: path, title, summary, order)
+ *          agent-ready/pages/*.md       one Markdown copy per public page, in English (frontmatter: path, title, summary,
+ *                                       order, and markdown when the page's URL is not in English)
  * Writes (into site.json "outDir", default "public"):
  *          llms.txt, llm.md             index in llmstxt.org format: home text, then a link to each copy
  *          llms-full.txt                everything in one file
  *          profile.json                 the site's public details as structured data
- *          <page path>.md               one copy per page (/about -> about.md, /work/x -> work/x.md)
+ *          <page path>.md               one copy per page (/about -> about.md, /work/x -> work/x.md;
+ *                                       /sobre with markdown: /about -> about.md)
  *          agents/index.html            the /agents page: the files as a terminal session in an editor window
  *          and agent-ready/markdown-map.json  page path -> Markdown copy, for Accept: text/markdown rewrites
  *
@@ -61,10 +63,23 @@ export function loadContent(root) {
           // The path becomes a file name: plain URL characters only, no "." or ".." segments.
           if (!/^\/[A-Za-z0-9._~\-/]*$/.test(path) || path.split("/").some((seg) => seg === "." || seg === ".."))
             throw new Error(`agent-ready/pages/${file}: path "${data.path}" must be a plain site path like /about or /work/case`);
-          return { file, path, title: data.title, summary: data.summary ?? "", order: data.order ?? 100, body };
+          // The English path of the copy, for a page whose URL is in another language (/sobre -> /about.md).
+          const markdown = data.markdown ? "/" + String(data.markdown).replace(/^\/+|\/+$|\.md$/g, "") : path;
+          if (data.markdown && (!/^\/[A-Za-z0-9._~\-/]+$/.test(markdown) || markdown.split("/").some((seg) => seg === "." || seg === "..")))
+            throw new Error(`agent-ready/pages/${file}: markdown "${data.markdown}" must be a plain site path like /about or /work/case`);
+          return { file, path, markdown, title: data.title, summary: data.summary ?? "", order: data.order ?? 100, body };
         })
         .sort((a, b) => a.order - b.order || a.path.localeCompare(b.path))
     : [];
+  const reserved = new Set(["/llms", "/llm", "/agents"]);
+  const copies = new Map();
+  for (const page of pages) {
+    if (page.path === "/") continue;
+    if (reserved.has(page.markdown)) throw new Error(`agent-ready/pages/${page.file}: the copy ${page.markdown}.md clashes with a generated file. Set another "markdown" path.`);
+    if (copies.has(page.markdown))
+      throw new Error(`agent-ready/pages/${page.file} and ${copies.get(page.markdown)} both write ${page.markdown}.md. Give one of them another "markdown" path.`);
+    copies.set(page.markdown, page.file);
+  }
   const home = pages.find((page) => page.path === "/");
   return { site, home, pages: pages.filter((page) => page.path !== "/") };
 }
@@ -74,7 +89,7 @@ export function loadContent(root) {
 const list = (items) => items.map((item) => `- ${item}`).join("\n");
 const section = (title, ...body) => [`## ${title}`, ...body.filter(Boolean)].join("\n\n");
 const doc = (...parts) => parts.filter((part) => part).join("\n\n") + "\n";
-const mdPath = (page) => `${page.path}.md`;
+const mdPath = (page) => `${page.markdown ?? page.path}.md`;
 
 export function agentFiles({ site, pages }) {
   return [
