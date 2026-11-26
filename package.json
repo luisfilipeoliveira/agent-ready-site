@@ -1,6 +1,6 @@
 {
   "name": "agent-ready-site",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Make any website readable by AI agents: llms.txt, Markdown copies of every page, a JSON profile, an /agents page and a \"Hey agent\" footer link.",
   "type": "module",
   "license": "MIT",
