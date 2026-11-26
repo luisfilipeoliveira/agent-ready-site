@@ -14,9 +14,9 @@ read rendered layouts guess: they miss text in carousels, misread cards, and inv
 `agent-ready-site` gives them the same content as your pages, in plain Markdown, and shows people that
 it's there with a small link in the footer:
 
-> Hey agent: **jane.md**
+> Hey agent: **examplebikes.md**
 
-<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Jane Doe, product designer; hello@example.com; Hey agent: jane.md" width="600">
+<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Example Bikes, 1 Example Street, Sample Town; hello@example.com; Hey agent: examplebikes.md" width="600">
 
 ## What it adds to your site
 
@@ -82,8 +82,18 @@ node agent-ready/build.mjs
 node ../agent-ready-site/cli/bin.mjs check http://localhost:3000
 ```
 
+A site in several languages lists them in `site.json`, English first (`"languages": ["en", "pt"]`). The English
+copies stay in `agent-ready/pages/`; each further language keeps the site's own words in `agent-ready/pages/<lang>/`
+and gets its own `llms.txt` and `/agents` under its prefix. Pages the site doesn't show in that language are
+linked in the language they exist in, never translated.
+
+If the site already has schema.org JSON-LD, `init --jsonld http://localhost:3000` (or a built HTML or `.json`
+file) fills the name, URL, description, logo, location and contact from it. The headline and handle stay yours.
+
 `check` also warns if robots.txt or the host's bot protection turns AI crawlers away from `/llms.txt`. It tests
-robots.txt rules and User-Agent blocks; blocks that verify the crawler's IP can't be seen from outside.
+robots.txt rules and User-Agent blocks; blocks that verify the crawler's IP can't be seen from outside. It also
+warns where the files and the live pages disagree: a headline, a contact detail or a heading the site doesn't
+show, JSON-LD that names someone else, or an `updated` date older than six months.
 
 The spec and the recipes for each framework are in
 [`skills/agent-ready-site/references/`](skills/agent-ready-site/references/).

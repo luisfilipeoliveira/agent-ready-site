@@ -6,6 +6,8 @@
  * Reads:   agent-ready/site.json        the site's type (person or organization), name, handle, URL, contact, /agents copy
  *          agent-ready/pages/*.md       one Markdown copy per public page, in English (frontmatter: path, title, summary,
  *                                       order, and markdown when the page's URL is not in English)
+ *          agent-ready/pages/<lang>/*.md  the same for each further language in site.json "languages", in that
+ *                                       language's own words; a page and its translation share a file name
  * Writes (into site.json "outDir", default "public"):
  *          llms.txt, llm.md             index in llmstxt.org format: home text, then a link to each copy
  *          llms-full.txt                everything in one file
@@ -13,6 +15,7 @@
  *          <page path>.md               one copy per page (/about -> about.md, /work/x -> work/x.md;
  *                                       /sobre with markdown: /about -> about.md)
  *          agents/index.html            the /agents page: the files as a terminal session in an editor window
+ *          <prefix>/llms.txt, …         for each further language: its own index, full file and /agents page
  *          and agent-ready/markdown-map.json  page path -> Markdown copy, for Accept: text/markdown rewrites
  *
  * Every word comes from site.json and the page files, which hold only what the site itself says.
@@ -41,6 +44,46 @@ export function parseFrontmatter(text) {
 /** Who the site is about: one person (a portfolio, a personal site) or an organization (a company, a studio, a project). */
 export const SITE_TYPES = ["person", "organization"];
 
+const LANGUAGE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+
+function readPages(dir, label) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((file) => file.endsWith(".md"))
+    .map((file) => {
+      const { data, body } = parseFrontmatter(readFileSync(join(dir, file), "utf8"));
+      if (!data.path || !data.title) throw new Error(`${label}/${file} needs "path" and "title" in its frontmatter.`);
+      const path = data.path === "/" ? "/" : "/" + String(data.path).replace(/^\/+|\/+$/g, "");
+      // The path becomes a file name: plain URL characters only, no "." or ".." segments.
+      if (!/^\/[A-Za-z0-9._~\-/]*$/.test(path) || path.split("/").some((seg) => seg === "." || seg === ".."))
+        throw new Error(`${label}/${file}: path "${data.path}" must be a plain site path like /about or /work/case`);
+      // The English path of the copy, for a page whose URL is in another language (/sobre -> /about.md).
+      const markdown = data.markdown ? "/" + String(data.markdown).replace(/^\/+|\/+$|\.md$/g, "") : path;
+      if (data.markdown && (!/^\/[A-Za-z0-9._~\-/]+$/.test(markdown) || markdown.split("/").some((seg) => seg === "." || seg === "..")))
+        throw new Error(`${label}/${file}: markdown "${data.markdown}" must be a plain site path like /about or /work/case`);
+      return { file, label, path, markdown, title: data.title, summary: data.summary ?? "", order: data.order ?? 100, body };
+    })
+    .sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
+}
+
+/** A language's name in that language ("Português"), unless site.i18n[lang].languageName says otherwise. */
+function languageName(lang, override) {
+  if (override) return override;
+  try {
+    const name = new Intl.DisplayNames([lang], { type: "language" }).of(lang) ?? lang;
+    return name.charAt(0).toLocaleUpperCase(lang) + name.slice(1);
+  } catch {
+    return lang;
+  }
+}
+
+/**
+ * The site's content, one entry per language. The first language is the default: its pages are in
+ * agent-ready/pages/ and its files at the site root. Each further language has its pages in
+ * agent-ready/pages/<lang>/ and its files under a prefix (/<lang> unless site.i18n[lang].prefix says otherwise),
+ * with site.json values overridden by site.i18n[lang]. The returned object is the default language's content,
+ * with `languages` holding all of them; a site.json without "languages" has one.
+ */
 export function loadContent(root) {
   const dir = join(root, "agent-ready");
   const sitePath = join(dir, "site.json");
@@ -52,74 +95,144 @@ export function loadContent(root) {
   site.type ??= "person";
   if (!SITE_TYPES.includes(site.type)) throw new Error(`agent-ready/site.json: "type" must be ${SITE_TYPES.map((t) => `"${t}"`).join(" or ")}, not "${site.type}".`);
   site.url = site.url.replace(/\/+$/, "");
+
+  const multi = Array.isArray(site.languages) && site.languages.length > 0;
+  const codes = multi ? site.languages : [site.language ?? "en"];
+  for (const code of codes) if (typeof code !== "string" || !LANGUAGE.test(code)) throw new Error(`agent-ready/site.json: "${code}" is not a language code like "en" or "pt-PT".`);
+  if (new Set(codes.map((c) => c.toLowerCase())).size !== codes.length) throw new Error(`agent-ready/site.json: "languages" lists a language twice.`);
+  // The default copies are always in English (translated if the site isn't); further languages keep their own words.
+  if (multi && !/^en(-|$)/i.test(codes[0])) throw new Error(`agent-ready/site.json: the first of "languages" must be English ("en"), not "${codes[0]}". The default copies are in English; list the site's other languages after it.`);
+  site.language = codes[0];
+
   const pagesDir = join(dir, "pages");
-  const pages = existsSync(pagesDir)
-    ? readdirSync(pagesDir)
-        .filter((file) => file.endsWith(".md"))
-        .map((file) => {
-          const { data, body } = parseFrontmatter(readFileSync(join(pagesDir, file), "utf8"));
-          if (!data.path || !data.title) throw new Error(`agent-ready/pages/${file} needs "path" and "title" in its frontmatter.`);
-          const path = data.path === "/" ? "/" : "/" + String(data.path).replace(/^\/+|\/+$/g, "");
-          // The path becomes a file name: plain URL characters only, no "." or ".." segments.
-          if (!/^\/[A-Za-z0-9._~\-/]*$/.test(path) || path.split("/").some((seg) => seg === "." || seg === ".."))
-            throw new Error(`agent-ready/pages/${file}: path "${data.path}" must be a plain site path like /about or /work/case`);
-          // The English path of the copy, for a page whose URL is in another language (/sobre -> /about.md).
-          const markdown = data.markdown ? "/" + String(data.markdown).replace(/^\/+|\/+$|\.md$/g, "") : path;
-          if (data.markdown && (!/^\/[A-Za-z0-9._~\-/]+$/.test(markdown) || markdown.split("/").some((seg) => seg === "." || seg === "..")))
-            throw new Error(`agent-ready/pages/${file}: markdown "${data.markdown}" must be a plain site path like /about or /work/case`);
-          return { file, path, markdown, title: data.title, summary: data.summary ?? "", order: data.order ?? 100, body };
-        })
-        .sort((a, b) => a.order - b.order || a.path.localeCompare(b.path))
-    : [];
-  const reserved = new Set(["/llms", "/llm", "/agents"]);
+  const languages = codes.map((lang, i) => {
+    const isDefault = i === 0;
+    const own = isDefault ? {} : site.i18n?.[lang] ?? {};
+    const prefix = isDefault ? "" : "/" + String(own.prefix ?? lang.toLowerCase()).replace(/^\/+|\/+$/g, "");
+    if (!isDefault && !/^\/[A-Za-z0-9._~-]+(\/[A-Za-z0-9._~-]+)*$/.test(prefix))
+      throw new Error(`agent-ready/site.json: the prefix for "${lang}" must be a plain path like /pt.`);
+    const all = readPages(isDefault ? pagesDir : join(pagesDir, lang), isDefault ? "agent-ready/pages" : `agent-ready/pages/${lang}`);
+    const homePath = prefix || "/";
+    const home = all.find((page) => page.path === homePath);
+    for (const page of all) page.language = lang;
+    const { i18n, languages: _, prefix: __, languageName: name, ...rest } = { ...site, ...own };
+    return { site: { ...rest, language: lang }, lang, name: languageName(lang, name), prefix, isDefault, home, pages: all.filter((page) => page !== home) };
+  });
+
+  // One URL, one copy: two languages can't claim the same path.
+  const seen = new Map();
+  for (const l of languages)
+    for (const page of [l.home, ...l.pages].filter(Boolean)) {
+      if (seen.has(page.path)) throw new Error(`agent-ready/pages: "${page.path}" is used by both ${seen.get(page.path)} and ${l.lang}.`);
+      seen.set(page.path, l.lang);
+    }
+
+  // One copy, one page: no two pages write the same .md, and none overwrites a generated file.
   const copies = new Map();
-  for (const page of pages) {
-    if (page.path === "/") continue;
-    if (reserved.has(page.markdown)) throw new Error(`agent-ready/pages/${page.file}: the copy ${page.markdown}.md clashes with a generated file. Set another "markdown" path.`);
-    if (copies.has(page.markdown))
-      throw new Error(`agent-ready/pages/${page.file} and ${copies.get(page.markdown)} both write ${page.markdown}.md. Give one of them another "markdown" path.`);
-    copies.set(page.markdown, page.file);
+  for (const l of languages) {
+    const reserved = new Set([`${l.prefix}/llms`, `${l.prefix}/llm`, `${l.prefix}/agents`]);
+    for (const page of l.pages) {
+      if (reserved.has(page.markdown)) throw new Error(`${page.label}/${page.file}: the copy ${page.markdown}.md clashes with a generated file. Set another "markdown" path.`);
+      if (copies.has(page.markdown))
+        throw new Error(`${page.label}/${page.file} and ${copies.get(page.markdown)} both write ${page.markdown}.md. Give one of them another "markdown" path.`);
+      copies.set(page.markdown, `${page.label}/${page.file}`);
+    }
   }
-  const home = pages.find((page) => page.path === "/");
-  return { site, home, pages: pages.filter((page) => page.path !== "/") };
+
+  // Translations share a file name. Each page learns its translations; each language, what it lacks.
+  for (const l of languages) {
+    l.multi = multi;
+    l.languages = languages;
+    for (const page of l.pages)
+      page.alternates = languages.filter((o) => o !== l).map((o) => ({ lang: o.lang, name: o.name, page: o.pages.find((p) => p.file === page.file) })).filter((a) => a.page);
+    l.untranslated = [];
+    for (const o of languages) {
+      if (o === l) continue;
+      for (const page of o.pages)
+        if (!l.pages.some((p) => p.file === page.file) && !l.untranslated.some((u) => u.page.file === page.file)) l.untranslated.push({ lang: o.lang, name: o.name, page });
+    }
+  }
+  return { ...languages[0], languages };
 }
 
 // ---------- Markdown ----------
+
+/**
+ * Titles of the sections the generator adds, in the site's language. A language not listed here gets English;
+ * any title can be set in site.json "sections" (or i18n.<lang>.sections): { pages, notTranslated, languages, files }.
+ * The contact section's title is site.json "contactTitle", and these are only its default.
+ */
+export const SECTION_TITLES = {
+  en: { pages: "Pages", notTranslated: "Not translated", languages: "Languages", files: "Files", contact: "Contact" },
+  pt: { pages: "Páginas", notTranslated: "Sem tradução", languages: "Línguas", files: "Ficheiros", contact: "Contacto" },
+  "pt-br": { pages: "Páginas", notTranslated: "Sem tradução", languages: "Idiomas", files: "Arquivos", contact: "Contato" },
+  es: { pages: "Páginas", notTranslated: "Sin traducir", languages: "Idiomas", files: "Archivos", contact: "Contacto" },
+  fr: { pages: "Pages", notTranslated: "Non traduit", languages: "Langues", files: "Fichiers", contact: "Contact" },
+  de: { pages: "Seiten", notTranslated: "Nicht übersetzt", languages: "Sprachen", files: "Dateien", contact: "Kontakt" },
+  it: { pages: "Pagine", notTranslated: "Non tradotto", languages: "Lingue", files: "File", contact: "Contatti" },
+  nl: { pages: "Pagina's", notTranslated: "Niet vertaald", languages: "Talen", files: "Bestanden", contact: "Contact" },
+};
+
+/** The section titles for a site (already merged with its language's i18n values). */
+export function sectionTitles(site) {
+  const code = String(site.language ?? "en").toLowerCase();
+  const base = SECTION_TITLES[code] ?? SECTION_TITLES[code.split("-")[0]] ?? SECTION_TITLES.en;
+  const own = site.sections && typeof site.sections === "object" ? site.sections : {};
+  const out = { ...base };
+  for (const key of Object.keys(base)) if (typeof own[key] === "string" && own[key].trim()) out[key] = own[key].trim();
+  return out;
+}
 
 const list = (items) => items.map((item) => `- ${item}`).join("\n");
 const section = (title, ...body) => [`## ${title}`, ...body.filter(Boolean)].join("\n\n");
 const doc = (...parts) => parts.filter((part) => part).join("\n\n") + "\n";
 const mdPath = (page) => `${page.markdown ?? page.path}.md`;
 
-export function agentFiles({ site, pages }) {
+export function agentFiles({ site, pages, prefix = "" }) {
   return [
-    { path: "/llms.txt", description: "The entry point: the home page, a link to each page copy, and contact details." },
-    { path: "/llm.md", description: "An alias of /llms.txt for tools that look for this name." },
-    { path: "/llms-full.txt", description: "The index and every page copy, joined into a single file." },
+    { path: `${prefix}/llms.txt`, description: "The entry point: the home page, a link to each page copy, and contact details." },
+    { path: `${prefix}/llm.md`, description: `An alias of ${prefix}/llms.txt for tools that look for this name.` },
+    { path: `${prefix}/llms-full.txt`, description: "The index and every page copy, joined into a single file." },
     { path: "/profile.json", description: "Name, headline, pages and contact as JSON." },
     ...pages.map((page) => ({ path: mdPath(page), description: `Markdown copy of the ${page.title} page.` })),
     ...(site.extraFiles ?? []),
-    { path: "/agents", description: "A human-readable view of these files." },
+    { path: `${prefix}/agents`, description: "A human-readable view of these files." },
   ];
 }
 
 function contact({ site }) {
   if (!site.contact?.length) return "";
-  return section(site.contactTitle ?? "Contact", site.contactText ?? "", list(site.contact.map((c) => `${c.label}: ${c.value}`)));
+  return section(site.contactTitle ?? sectionTitles(site).contact, site.contactText ?? "", list(site.contact.map((c) => `${c.label}: ${c.value}`)));
+}
+
+/** The other languages' entry points, and the pages this language doesn't have (linked in the language they are in). */
+function languageSections(content) {
+  if (!content.multi) return [];
+  const { site } = content;
+  const others = content.languages.filter((l) => l !== content);
+  const titles = sectionTitles(site);
+  return [
+    content.untranslated?.length
+      ? section(titles.notTranslated, list(content.untranslated.map((u) => `[${u.page.title}](${site.url}${mdPath(u.page)}) (${u.name})`)))
+      : "",
+    others.length ? section(titles.languages, list(others.map((l) => `[${l.name}](${site.url}${l.prefix}/llms.txt) (${l.lang})`))) : "",
+  ];
 }
 
 export function buildLlmsTxt(content, { withContact = true } = {}) {
-  const { site, home, pages } = content;
+  const { site, home, pages, prefix = "" } = content;
+  const titles = sectionTitles(site);
   return doc(
     `# ${site.name}`,
     `> ${site.headline}`,
-    `Format: https://llmstxt.org. Below is the text of the home page (${site.url}), mirrored at ${site.url}/llm.md, followed by links to a Markdown copy of each other page.`,
+    `Format: https://llmstxt.org. Below is the text of the home page (${site.url}${prefix}), mirrored at ${site.url}${prefix}/llm.md, followed by links to a Markdown copy of each other page.`,
     list(
       [site.readingPreference && `Reading preference: ${site.readingPreference}`, site.updated && `Updated: ${site.updated}`].filter(Boolean),
     ),
     home?.body ?? "",
-    pages.length ? section("Pages", list(pages.map((p) => `[${p.title}](${site.url}${mdPath(p)})${p.summary ? `: ${p.summary}` : ""}`))) : "",
-    section("Files", list(agentFiles(content).map((f) => `[${f.path}](${site.url}${f.path}): ${f.description}`))),
+    pages.length ? section(titles.pages, list(pages.map((p) => `[${p.title}](${site.url}${mdPath(p)})${p.summary ? `: ${p.summary}` : ""}`))) : "",
+    ...languageSections(content),
+    section(titles.files, list(agentFiles(content).map((f) => `[${f.path}](${site.url}${f.path}): ${f.description}`))),
     withContact ? contact(content) : "",
   );
 }
@@ -129,6 +242,7 @@ export function buildPageMd(content, page, { withContact = true } = {}) {
   return doc(
     `# ${page.title}`,
     `Source: ${site.url}${page.path}`,
+    page.alternates?.length ? `Also in: ${page.alternates.map((a) => `[${a.name}](${site.url}${mdPath(a.page)})`).join(", ")}` : "",
     page.summary ? `> ${page.summary}` : "",
     page.body,
     withContact ? contact(content) : "",
@@ -146,7 +260,18 @@ export function buildLlmsFullTxt(content) {
 const plain = (text) => text.replace(/\*\*/g, "");
 
 export function buildProfileJson(content) {
-  const { site, pages } = content;
+  const { site } = content;
+  // One profile for the whole site: every language's pages, each with its language and its translations.
+  const pages = content.multi ? content.languages.flatMap((l) => l.pages) : content.pages;
+  const pageEntry = (p) => ({
+    title: p.title,
+    summary: plain(p.summary),
+    url: `${site.url}${p.path}`,
+    markdown: `${site.url}${mdPath(p)}`,
+    ...(content.multi
+      ? { language: p.language, alternates: Object.fromEntries(p.alternates.map((a) => [a.lang, { url: `${site.url}${a.page.path}`, markdown: `${site.url}${mdPath(a.page)}` }])) }
+      : {}),
+  });
   return {
     type: site.type ?? "person",
     name: site.name,
@@ -157,18 +282,32 @@ export function buildProfileJson(content) {
     ...(site.updated ? { updated: site.updated } : {}),
     ...(site.readingPreference ? { readingPreference: site.readingPreference } : {}),
     contact: Object.fromEntries((site.contact ?? []).map((c) => [c.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"), c.value])),
-    pages: pages.map((p) => ({ title: p.title, summary: plain(p.summary), url: `${site.url}${p.path}`, markdown: `${site.url}${mdPath(p)}` })),
+    ...(content.multi
+      ? {
+          languages: content.languages.map((l) => ({
+            language: l.lang,
+            name: l.name,
+            home: `${site.url}${l.prefix || "/"}`,
+            llms: `${site.url}${l.prefix}/llms.txt`,
+            headline: l.site.headline,
+          })),
+        }
+      : {}),
+    pages: pages.map(pageEntry),
     ...(site.profile ? site.profile : {}),
-    files: agentFiles(content).map((f) => `${site.url}${f.path}`),
+    files: (content.multi ? content.languages : [content]).flatMap((l) => agentFiles(l)).map((f) => `${site.url}${f.path}`).filter((f, i, all) => all.indexOf(f) === i),
   };
 }
 
 export function buildMarkdownMap(content) {
-  return {
-    "/": "/llms.txt",
-    "/agents": "/llms.txt",
-    ...Object.fromEntries(content.pages.map((p) => [p.path, mdPath(p)])),
-  };
+  const map = {};
+  for (const l of content.languages ?? [content]) {
+    const prefix = l.prefix ?? "";
+    map[prefix || "/"] = `${prefix}/llms.txt`;
+    map[`${prefix}/agents`] = `${prefix}/llms.txt`;
+    for (const p of l.pages) map[p.path] = mdPath(p);
+  }
+  return map;
 }
 
 // ---------- /agents page ----------
@@ -312,7 +451,8 @@ export function buildAgentsHtml(content, sizes) {
   const handle = site.handle;
   // Sites served under a sub-path (e.g. https://user.github.io/repo): every site-relative link gets that prefix.
   const base = new URL(site.url).pathname.replace(/\/+$/, "");
-  const home = base ? `${base}/` : "/";
+  const prefix = content.prefix ?? "";
+  const home = `${base}${prefix}/`;
 
   const blocks = [
     { command: "whoami", output: [`<h1>${esc(title)}</h1>`, `<p>${esc(lead)}</p>`] },
@@ -356,8 +496,8 @@ export function buildAgentsHtml(content, sizes) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(page.metaTitle ?? `For AI agents | ${site.name}`)}</title>
 <meta name="description" content="${esc(page.description ?? `Markdown and JSON copies of ${site.url.replace(/^https?:\/\//, "")} for AI assistants: llms.txt, every page as Markdown, and a profile.`)}">
-<link rel="canonical" href="${esc(site.url)}/agents">
-<link rel="alternate" type="text/markdown" href="${esc(base)}/llms.txt">
+<link rel="canonical" href="${esc(site.url)}${esc(prefix)}/agents">
+<link rel="alternate" type="text/markdown" href="${esc(base + prefix)}/llms.txt">
 <style>
 :root{${tokenVars(light)}--radius:${radius};color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not(.light){${tokenVars(dark)}color-scheme:dark}}
@@ -457,15 +597,16 @@ export function build(root = process.cwd()) {
   const bytes = (s) => Buffer.byteLength(s, "utf8");
 
   const files = new Map();
-  const llms = buildLlmsTxt(content);
-  files.set("/llms.txt", llms);
-  files.set("/llm.md", llms);
-  files.set("/llms-full.txt", buildLlmsFullTxt(content));
   files.set("/profile.json", JSON.stringify(buildProfileJson(content), null, 2) + "\n");
-  for (const page of content.pages) files.set(mdPath(page), buildPageMd(content, page));
-
+  for (const l of content.languages) {
+    const llms = buildLlmsTxt(l);
+    files.set(`${l.prefix}/llms.txt`, llms);
+    files.set(`${l.prefix}/llm.md`, llms);
+    files.set(`${l.prefix}/llms-full.txt`, buildLlmsFullTxt(l));
+    for (const page of l.pages) files.set(mdPath(page), buildPageMd(l, page));
+  }
   const sizes = Object.fromEntries([...files].map(([path, text]) => [path, bytes(text)]));
-  files.set("/agents/index.html", buildAgentsHtml(content, sizes));
+  for (const l of content.languages) files.set(`${l.prefix}/agents/index.html`, buildAgentsHtml(l, sizes));
 
   // Remove files a previous run wrote that no longer exist (a page was deleted or renamed).
   const ledgerPath = join(root, "agent-ready", ".generated.json");

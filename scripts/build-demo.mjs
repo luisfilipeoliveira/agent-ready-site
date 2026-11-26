@@ -27,7 +27,7 @@ function htmlFiles(dir) {
 if (base) for (const file of htmlFiles(OUT)) writeFileSync(file, readFileSync(file, "utf8").replace(/(href|src)="\/(?!\/)/g, `$1="${base}/`));
 
 const { framework, outDir } = init(OUT, {});
-const fixture = join(ROOT, "scripts", "fixtures", "jane");
+const fixture = join(ROOT, "scripts", "fixtures", "bike-shop");
 const site = { framework, outDir, ...JSON.parse(readFileSync(join(fixture, "site.json"), "utf8")), url: URL_ };
 writeFileSync(join(OUT, "agent-ready", "site.json"), JSON.stringify(site, null, 2) + "\n");
 cpSync(join(fixture, "pages"), join(OUT, "agent-ready", "pages"), { recursive: true });
