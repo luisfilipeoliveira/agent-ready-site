@@ -14,16 +14,16 @@ read rendered layouts guess: they miss text in carousels, misread cards, and inv
 `agent-ready-site` gives them the same content as your pages, in plain Markdown, and shows people that
 it's there with a small link in the footer:
 
-> Hey agent: **jane.md**
+> Hey agent: **examplebikes.md**
 
-<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Jane Doe, product designer; hello@example.com; Hey agent: jane.md" width="600">
+<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Example Bikes, 1 Example Street, Sample Town; hello@example.com; Hey agent: examplebikes.md" width="600">
 
 ## What it adds to your site
 
 | URL | What it is |
 | --- | --- |
 | `/llms.txt` (and `/llm.md`) | The index, in the [llms.txt](https://llmstxt.org) format: your home page, links to every page copy, and contact |
-| `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md` |
+| `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md`. Always in English: a page in another language is translated, and its copy gets an English name (`/sobre` → `/about.md`) |
 | `/llms-full.txt` | Everything in one file |
 | `/profile.json` | Name, headline, pages and contact as JSON |
 | `/agents` | A page for people: the files, shown as a terminal session in a code-editor window that types itself out (no-JS and reduced-motion fallbacks, light and dark) |
@@ -77,12 +77,31 @@ Clone this repository next to your site and tell your agent:
 
 ### By hand, with the CLI
 
+From your site's root (Node 18 or later):
+
 ```bash
 npx agent-ready-site init --name "Jane Doe" --handle jane --url https://example.com
 # write agent-ready/site.json and agent-ready/pages/*.md (see the spec)
 node agent-ready/build.mjs
 npx agent-ready-site check http://localhost:3000
 ```
+
+From a clone of this repository, `node ../agent-ready-site/cli/bin.mjs` does the same as `npx agent-ready-site`.
+
+A site in several languages lists them in `site.json`, English first (`"languages": ["en", "pt"]`). The English
+copies stay in `agent-ready/pages/`; each further language keeps the site's own words in `agent-ready/pages/<lang>/`
+and gets its own `llms.txt` and `/agents` under its prefix. Pages the site doesn't show in that language are
+linked in the language they exist in, never translated. A site whose root is in another language, with English
+under a path (`/` in Portuguese, `/en` in English), sets `"home": "/en"` and `i18n.pt.home: "/"`; `/llms.txt` stays
+the English one.
+
+If the site already has schema.org JSON-LD, `init --jsonld http://localhost:3000` (or a built HTML or `.json`
+file) fills the name, URL, description, logo, location and contact from it. The headline and handle stay yours.
+
+`check` also warns if robots.txt or the host's bot protection turns AI crawlers away from `/llms.txt`. It tests
+robots.txt rules and User-Agent blocks; blocks that verify the crawler's IP can't be seen from outside. It also
+warns where the files and the live pages disagree: a headline, a contact detail or a heading the site doesn't
+show, JSON-LD that names someone else, or an `updated` date older than six months.
 
 The spec and the recipes for each framework are in
 [`skills/agent-ready-site/references/`](skills/agent-ready-site/references/).
@@ -93,6 +112,7 @@ The spec and the recipes for each framework are in
 | --- | --- | --- |
 | Next.js (App Router) | `public/` + `proxy.ts` (written by `init`) | Yes, in the proxy |
 | Astro | `public/` | Middleware (SSR) or host rules |
+| SvelteKit | `static/` | Server hook or host rules |
 | Vite SPA | `public/` | Host rules |
 | Plain HTML | next to `index.html` | Host rules (Vercel, Cloudflare); not possible on GitHub Pages |
 
@@ -106,6 +126,7 @@ agent-ready/
   build.mjs        the generator (runs before dev and build)
   markdown-map.json, .generated.json   written by the generator
 public/            llms.txt, llm.md, llms-full.txt, profile.json, the .md copies, agents/index.html
+                   (static/ in SvelteKit, next to index.html on a plain HTML site)
 ```
 
 When your content changes, update the matching file in `agent-ready/pages/` and the build does the rest.

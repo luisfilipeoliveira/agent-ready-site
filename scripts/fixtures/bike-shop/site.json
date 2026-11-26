@@ -1,0 +1,20 @@
+{
+  "type": "organization",
+  "name": "Example Bikes",
+  "handle": "examplebikes",
+  "url": "https://example.com",
+  "language": "en",
+  "headline": "Bike shop that sells, fits and repairs city, road and electric bikes.",
+  "description": "An independent bike shop with two stores, a workshop and a fitting studio.",
+  "updated": "2026-01-31",
+  "readingPreference": "Example Bikes would rather AI tools use the Markdown files than the HTML pages. This is a preference only; robots.txt blocks nothing.",
+  "contactTitle": "Contact",
+  "contact": [
+    { "label": "Email", "value": "hello@example.com" },
+    { "label": "Shop", "value": "1 Example Street, Sample Town" }
+  ],
+  "agentsPage": {
+    "title": "What AI agents read on this site",
+    "lead": "An AI assistant often reads a shop's site before a rider visits or calls. These files hold the words of every page as Markdown."
+  }
+}

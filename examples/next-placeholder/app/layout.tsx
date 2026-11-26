@@ -4,8 +4,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://example.com"),
-  title: "Jane Doe, product designer",
-  description: "Product designer who turns messy checkout and onboarding flows into products people finish.",
+  title: "Example Bikes, bike shop",
+  description: "Bike shop that sells, fits and repairs city, road and electric bikes.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

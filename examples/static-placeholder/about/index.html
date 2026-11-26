@@ -3,22 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>About, Jane Doe</title>
+<title>About, Example Bikes</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<nav><a href="/">Home</a> <a href="/about/">About</a></nav>
+<nav><a class="logo" href="/" aria-label="Example Bikes, home"><span class="mono" aria-hidden="true">EB</span><span class="name">Example Bikes</span></a> <a href="/">Home</a> <a href="/about/" aria-current="page">About</a> <a class="btn primary" href="mailto:hello@example.com">Contact</a></nav>
 <main>
+<section class="grid hero">
+<div>
+<span class="eyebrow">Since 2014</span>
 <h1>About</h1>
-<p>I have designed digital products for twelve years, mostly commerce and fintech.</p>
-<h2>How I work</h2>
-<ul><li>Start from the numbers the business already watches.</li><li>Prototype early, test with five people, repeat.</li></ul>
-<h2>Experience</h2>
-<p><strong>Example Company</strong>, Lead Product Designer, 2021 to now.</p>
-<p><strong>Sample Studio</strong>, Product Designer, 2016 to 2021.</p>
+<p class="lead">We have sold and repaired bikes in Sample Town since 2014.</p>
+</div>
+<div class="portrait" aria-hidden="true">EB</div>
+</section>
+<section class="grid top">
+<div class="card">
+<h2>How we work</h2>
+<ul class="steps"><li>Every bike gets a test ride before you buy it.</li><li>Repairs have fixed prices, agreed before we start.</li></ul>
+</div>
+<div class="card">
+<h2>Shops</h2>
+<ul class="jobs">
+<li><span><strong>Example Bikes Centre</strong>, sales, workshop and fitting studio</span><time>2014 to now</time></li>
+<li><span><strong>Example Bikes Riverside</strong>, sales and quick repairs</span><time>2020 to now</time></li>
+</ul>
+</div>
+</section>
 </main>
 <footer>
-<span>Jane Doe, product designer</span>
+<span>Example Bikes, 1 Example Street, Sample Town</span>
 <a href="mailto:hello@example.com">hello@example.com</a>
 </footer>
 </body>

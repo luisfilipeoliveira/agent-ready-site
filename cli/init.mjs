@@ -2,6 +2,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { detect } from "./detect.mjs";
+import { SITE_TYPES } from "./generator.mjs";
+import { siteFromJsonLd } from "./check.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES = join(HERE, "..", "templates");
@@ -16,15 +18,19 @@ order: 0
 Replace this with the home page's content, in Markdown, in the page's own order and headings.
 `;
 
-function placeholderSite({ framework, outDir, name, handle, url }) {
+function placeholderSite({ framework, outDir, type = "person", name, handle, url }) {
+  const org = type === "organization";
   return {
     framework,
     outDir,
-    name: name ?? "Your Name",
-    handle: handle ?? "you",
+    type,
+    name: name ?? (org ? "Your Organization" : "Your Name"),
+    handle: handle ?? (org ? "yourorg" : "you"),
     url: url ?? "https://example.com",
     language: "en",
-    headline: "One line on who you are and what you do, as the home page says it.",
+    headline: org
+      ? "One line on what the organization does, as the home page says it."
+      : "One line on who you are and what you do, as the home page says it.",
     description: "",
     location: "",
     updated: new Date().toISOString().slice(0, 10),
@@ -40,18 +46,67 @@ function placeholderSite({ framework, outDir, name, handle, url }) {
   };
 }
 
-/** Adds `node agent-ready/build.mjs` in front of the dev and build scripts, once. */
+/**
+ * Fills site.json from JSON-LD. A new file takes every imported field; an existing one only fills fields that
+ * are missing, empty or still the placeholder, so nothing the owner or an agent wrote is replaced.
+ */
+function applyJsonLd(site, html, { type }, log) {
+  const { fields, notes } = siteFromJsonLd(html, { type });
+  const placeholder = placeholderSite({ type: fields.type ?? site.type });
+  const unset = (key) => {
+    const v = site[key];
+    if (v === undefined || v === "" || (Array.isArray(v) && !v.length)) return true;
+    if (key === "type") return false; // the type follows the name: filled together below
+    return JSON.stringify(v) === JSON.stringify(placeholder[key]) || JSON.stringify(v) === JSON.stringify(placeholderSite({})[key]);
+  };
+  const filled = [];
+  const kept = [];
+  for (const [key, value] of Object.entries(fields)) {
+    if (key === "type" && type) continue; // --type wins
+    // The type is taken with the name: a site.json whose name is still the placeholder takes both.
+    if (key === "type" ? unset("name") : unset(key)) {
+      site[key] = value;
+      filled.push(key);
+    } else if (JSON.stringify(site[key]) !== JSON.stringify(value)) kept.push(key);
+  }
+  // Became an organization: placeholders still written for a person switch to the organization ones.
+  if (filled.includes("type") && site.type === "organization") {
+    const person = placeholderSite({});
+    for (const key of ["handle", "headline"]) if (site[key] === person[key]) site[key] = placeholder[key];
+  }
+  log.push(...notes.slice(0, -1).filter((n) => !n.startsWith("Imported")));
+  if (filled.length) log.push(`site.json: filled ${filled.join(", ")} from JSON-LD.`);
+  if (kept.length) log.push(`site.json: kept your ${kept.join(", ")} (JSON-LD differs; check which one the site shows).`);
+  if (Object.keys(fields).length) log.push(notes[notes.length - 1]);
+  else log.push(notes[0]);
+}
+
+/**
+ * Adds `node agent-ready/build.mjs` in front of the dev and build scripts, once. It goes inside the scripts
+ * themselves, not in predev/prebuild: pnpm and Yarn 2+ don't run pre scripts, so the build step would be skipped.
+ */
 function wireScripts(root, pkg, log) {
   if (!pkg) return log.push("No package.json: run `node agent-ready/build.mjs` before each deploy.");
   const scripts = (pkg.scripts ??= {});
   const step = "node agent-ready/build.mjs";
   scripts["agent-ready"] = step;
+  // Earlier versions of init used predev/prebuild: take the step out of them so it doesn't run twice.
   for (const name of ["predev", "prebuild"]) {
-    if (!scripts[name]) scripts[name] = step;
-    else if (!scripts[name].includes(step)) scripts[name] = `${step} && ${scripts[name]}`;
+    if (scripts[name] === step) delete scripts[name];
+    else if (scripts[name]?.startsWith(`${step} && `)) scripts[name] = scripts[name].slice(step.length + 4);
+  }
+  const wired = [];
+  for (const name of ["dev", "build"]) {
+    if (!scripts[name]) continue;
+    if (!scripts[name].includes(step)) scripts[name] = `${step} && ${scripts[name]}`;
+    wired.push(`\`${name}\``);
   }
   writeFileSync(join(root, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
-  log.push("package.json: added `agent-ready`, and the build step before `dev` and `build`.");
+  log.push(
+    wired.length
+      ? `package.json: added \`agent-ready\`, and the build step at the start of ${wired.join(" and ")}.`
+      : "package.json: added `agent-ready`. There is no `dev` or `build` script: run `npm run agent-ready` before each deploy.",
+  );
 }
 
 function nextProxy(root, srcDir, log) {
@@ -72,14 +127,24 @@ export function init(root, options = {}) {
   const found = detect(root);
   const framework = options.framework ?? found.framework;
   const outDir = options.out ?? found.outDir;
+  if (options.type !== undefined && !SITE_TYPES.includes(options.type))
+    throw new Error(`--type must be ${SITE_TYPES.join(" or ")}, not "${options.type}".`);
   const log = [`Detected: ${framework} (files go to ${outDir}/).`];
   const dir = join(root, "agent-ready");
   mkdirSync(join(dir, "pages"), { recursive: true });
 
   const sitePath = join(dir, "site.json");
   if (!existsSync(sitePath) || options.force) {
-    writeFileSync(sitePath, JSON.stringify(placeholderSite({ framework, outDir, ...options }), null, 2) + "\n");
+    const site = placeholderSite({ framework, outDir, ...options });
+    // Flags given on the command line beat JSON-LD: drop them from the placeholder check by marking them set.
+    if (options.jsonld) applyJsonLd(site, options.jsonld, options, log);
+    for (const key of ["name", "handle", "url"]) if (options[key]) site[key] = options[key];
+    writeFileSync(sitePath, JSON.stringify(site, null, 2) + "\n");
     log.push("Wrote agent-ready/site.json (placeholders: fill it from the site).");
+  } else if (options.jsonld) {
+    const site = JSON.parse(readFileSync(sitePath, "utf8"));
+    applyJsonLd(site, options.jsonld, options, log);
+    writeFileSync(sitePath, JSON.stringify(site, null, 2) + "\n");
   } else log.push("Kept the existing agent-ready/site.json.");
 
   const homePath = join(dir, "pages", "index.md");
