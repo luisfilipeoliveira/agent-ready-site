@@ -37,8 +37,46 @@ try {
   cpSync(join(FIX, "pages"), join(dir, "agent-ready", "pages"), { recursive: true });
   build(dir);
 
-  // ---------- security ----------
+  // ---------- English copy of a page whose URL is in another language ----------
   const pagesDir = join(dir, "agent-ready", "pages");
+  const contact = join(pagesDir, "contact.md");
+  writeFileSync(contact, "---\npath: /contacto\nmarkdown: /contact\ntitle: Contact\norder: 90\n---\n\nWrite any time.\n");
+  build(dir);
+  const map = JSON.parse(readFileSync(join(dir, "agent-ready", "markdown-map.json"), "utf8"));
+  const contactMd = existsSync(join(dir, "contact.md")) ? readFileSync(join(dir, "contact.md"), "utf8") : "";
+  const llmsTxt = readFileSync(join(dir, "llms.txt"), "utf8");
+  const profileJson = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
+  assert(
+    !existsSync(join(dir, "contacto.md")) &&
+      contactMd.includes("Source: https://example.com/contacto") &&
+      map["/contacto"] === "/contact.md" &&
+      llmsTxt.includes("(https://example.com/contact.md)") &&
+      profileJson.pages.some((p) => p.url === "https://example.com/contacto" && p.markdown === "https://example.com/contact.md"),
+    "markdown: gives a page an English copy name and the map, llms.txt and profile.json point to it",
+  );
+  const clash = join(pagesDir, "clash.md");
+  writeFileSync(clash, "---\npath: /fale-connosco\nmarkdown: /contact\ntitle: Clash\n---\n\nx\n");
+  let clashed = false;
+  try {
+    build(dir);
+  } catch (error) {
+    clashed = /both write \/contact\.md/.test(error.message);
+  }
+  assert(clashed, "two pages with the same copy name are rejected");
+  writeFileSync(clash, "---\npath: /fora\nmarkdown: /../out\ntitle: Clash\n---\n\nx\n");
+  clashed = false;
+  try {
+    build(dir);
+  } catch (error) {
+    clashed = /plain site path/.test(error.message);
+  }
+  assert(clashed && !existsSync(join(dir, "..", "out.md")), "a markdown path with .. is rejected");
+  rmSync(clash);
+  rmSync(contact);
+  build(dir);
+  assert(!existsSync(join(dir, "contact.md")), "build removes the English copy of a deleted page");
+
+  // ---------- security ----------
   const evil = join(pagesDir, "evil.md");
 
   writeFileSync(evil, "---\npath: /../../escaped\ntitle: Evil\n---\n\nx\n");

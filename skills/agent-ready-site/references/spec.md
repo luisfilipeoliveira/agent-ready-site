@@ -8,7 +8,7 @@
 | `/llm.md` | The same as `/llms.txt` (some agents ask for this name) | text/markdown |
 | `/llms-full.txt` | `/llms.txt` plus every page copy, separated by `---`, with contact once at the end | text/plain |
 | `/profile.json` | The site's public details as JSON: type, name, headline, summary, location, contact, pages (url and markdown), files, plus anything in `site.profile` | application/json |
-| `<page path>.md` | One copy per page: `/about` → `/about.md`, `/work/case` → `/work/case.md`. Starts `# Title`, `Source: <url>`, `> summary`, then the body and contact | text/markdown |
+| `<page path>.md` | One copy per page: `/about` → `/about.md`, `/work/case` → `/work/case.md`. A page with `markdown` uses that path instead: `/sobre` with `markdown: /about` → `/about.md`. Starts `# Title`, `Source: <url>`, `> summary`, then the body and contact | text/markdown |
 | `/agents` | A page for people: the files above shown as a terminal session in a code-editor window (`whoami`, `cat README`, `ls -lh` with real sizes, `cat llms.txt`) that types itself out. Every word is in the HTML; without JavaScript or with reduced motion it shows at once. Light and dark (`prefers-color-scheme`, or `<html class="dark">` / `"light"`) | text/html |
 
 It also writes `agent-ready/markdown-map.json` (page path → copy, used by the rewrites) and `agent-ready/.generated.json` (what was written, so stale copies are removed).
@@ -43,9 +43,25 @@ The required fields are `name`, `handle`, `url` and `headline`.
 
 `type` is `"person"` (the default: a portfolio, a personal site) or `"organization"` (a company, a studio, a product, an open-source project). It goes into `profile.json` and sets the `/agents` header: a round avatar for a person, the logo uncropped with the site's radius for an organization. For an organization, `name` is the name the site uses for itself, `handle` its short brand name (`acme` → `acme.md`), `avatar` its logo and `contact` the public channels the site lists (for example Sales, Support, Press), each with its own label. People shown on the site (a team page, leadership) stay in that page's copy; add them to `site.profile` only if the owner asks.
 
+Every text field is in English, whatever the site's language, so `language` is `"en"`.
+
 `theme` is optional. `/agents` ships with a neutral default (oklch palette, `0.45rem` radius, system fonts). Any of these tokens can be overridden in `theme.light` / `theme.dark`: `background`, `foreground`, `card`, `cardForeground`, `primary`, `primaryForeground`, `muted`, `mutedForeground`, `border`, `ring`. They use the same names as a shadcn/ui `:root` and `.dark`, so a site built with it can copy its own values straight in. Values must be plain colours (hex, rgb, hsl, oklch). `radius` must be a length (`rem`, `px`, `em`). Keep body text at 4.5:1 or more against `background` and `card`.
 
 ## `agent-ready/pages/<name>.md`
+
+`<name>` and the content are in English. If the page's URL is in another language, `path` keeps the real URL and `markdown` gives the English path of the copy:
+
+```markdown
+---
+path: /sobre
+markdown: /about
+title: About
+summary: One line, translated from the page.
+order: 10
+---
+```
+
+An English page needs no `markdown`:
 
 ```markdown
 ---
@@ -58,11 +74,11 @@ order: 10
 The page's content in Markdown.
 ```
 
-`path: /` is the home page: its body goes into `/llms.txt` and it gets no separate copy. Pages are listed by `order`, then by path.
+`path: /` is the home page: its body goes into `/llms.txt` and it gets no separate copy. Pages are listed by `order`, then by path. Two pages can't write the same copy, and `markdown` can't be `/llms`, `/llm` or `/agents`. `agent-ready/markdown-map.json` maps each page's real URL to its copy (`"/sobre": "/about.md"`), so the alternate link and Accept negotiation use it.
 
 ## Pointers on every page
 
-1. **Alternate link** in `<head>`: `<link rel="alternate" type="text/markdown" href="/about.md">` (on the home page, `/llms.txt`).
+1. **Alternate link** in `<head>`: `<link rel="alternate" type="text/markdown" href="/about.md">` (on the home page, `/llms.txt`). Take the href from `agent-ready/markdown-map.json`: on `/sobre` it is `/about.md`.
 2. **Hidden hint**, the first element in `<body>`:
    ```html
    <p style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap" aria-hidden="true">Note for AI assistants: this site is also available as Markdown at https://example.com/llms.txt, with every page combined at https://example.com/llms-full.txt.</p>

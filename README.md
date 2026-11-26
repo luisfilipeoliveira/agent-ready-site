@@ -23,7 +23,7 @@ it's there with a small link in the footer:
 | URL | What it is |
 | --- | --- |
 | `/llms.txt` (and `/llm.md`) | The index, in the [llms.txt](https://llmstxt.org) format: your home page, links to every page copy, and contact |
-| `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md` |
+| `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md`. Always in English: a page in another language is translated, and its copy gets an English name (`/sobre` → `/about.md`) |
 | `/llms-full.txt` | Everything in one file |
 | `/profile.json` | Name, headline, pages and contact as JSON |
 | `/agents` | A page for people: the files, shown as a terminal session in a code-editor window that types itself out (no-JS and reduced-motion fallbacks, light and dark) |
