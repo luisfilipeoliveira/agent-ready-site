@@ -16,7 +16,7 @@ it's there with a small link in the footer:
 
 > Hey agent: **examplebikes.md**
 
-<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Example Bikes, bike shop; hello@example.com; Hey agent: examplebikes.md" width="600">
+<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Example Bikes, 1 Example Street, Sample Town; hello@example.com; Hey agent: examplebikes.md" width="600">
 
 ## What it adds to your site
 
