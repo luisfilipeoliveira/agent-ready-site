@@ -4,7 +4,7 @@
  */
 const MARKDOWN_TYPES = /text\/(markdown|plain)/;
 
-export async function check(base, { log = console.log } = {}) {
+export async function check(base, { log = console.log, now = new Date() } = {}) {
   base = base.replace(/\/+$/, "");
   const results = [];
   const pass = (name) => results.push({ level: "pass", name });
@@ -53,11 +53,13 @@ export async function check(base, { log = console.log } = {}) {
   // against a local server, a preview or a sub-path deploy.
   const siteUrl = (profile?.url ?? "").replace(/\/+$/, "");
   const local = (url) => (siteUrl && url.startsWith(siteUrl) ? url.slice(siteUrl.length) || "/" : new URL(url).pathname);
+  const copies = new Map(); // page -> { markdown, html }
   for (const page of pages) {
     const path = local(page.markdown);
-    await markdownFile(path);
+    const markdown = await markdownFile(path);
     const pagePath = local(page.url);
     const { res, text } = await get(pagePath);
+    if (res?.status === 200) copies.set(page, { path: pagePath, markdown, html: text });
     if (res?.status !== 200) fail(pagePath, `status ${res?.status}`);
     else if (!new RegExp(`rel=["']alternate["'][^>]*type=["']text/markdown["'][^>]*href=["'][^"']*${escapeRe(path)}["']|type=["']text/markdown["'][^>]*href=["'][^"']*${escapeRe(path)}["'][^>]*rel=["']alternate["']|href=["'][^"']*${escapeRe(path)}["'][^>]*rel=["']alternate["']`, "i").test(text))
       fail(`${pagePath} alternate link`, `no <link rel="alternate" type="text/markdown" href="${path}">`);
@@ -65,8 +67,10 @@ export async function check(base, { log = console.log } = {}) {
   }
 
   // Home page: alternate, hidden hint, footer link.
+  let homeHtml = "";
   {
     const { res, text } = await get("/");
+    if (res?.status === 200) homeHtml = text;
     if (res?.status !== 200) fail("/", `status ${res?.status}`);
     else {
       if (/type=["']text\/markdown["']/i.test(text) && /llms\.txt/.test(text)) pass("/ links /llms.txt as its Markdown copy");
@@ -107,6 +111,7 @@ export async function check(base, { log = console.log } = {}) {
     else pass("/llms.txt links every page copy");
   }
 
+  if (profile) checkConsistency({ profile, llms, homeHtml, copies, now }, { pass, warn });
   await checkCrawlers(base, { get, pass, warn });
 
   for (const r of results) {
@@ -116,8 +121,170 @@ export async function check(base, { log = console.log } = {}) {
   const count = (level) => results.filter((r) => r.level === level).length;
   const failed = count("fail");
   const warned = count("warn");
-  log(`\n${count("pass")} passed, ${warned} warning${warned === 1 ? "" : "s"}, ${failed} failed.`);
+  const mismatches = results.filter((r) => r.level === "warn" && r.name.startsWith("mismatch")).length;
+  log(`\n${count("pass")} passed, ${warned} warning${warned === 1 ? "" : "s"}${mismatches ? ` (${mismatches} where the files and the site disagree)` : ""}, ${failed} failed.`);
   return failed === 0;
+}
+
+// ---------- consistency ----------
+
+/** Visible text of an HTML page: no scripts, styles or tags, entities decoded, whitespace collapsed. */
+export function htmlText(html) {
+  return normalise(
+    decodeEntities(
+      html
+        .replace(/<!--[\s\S]*?-->/g, " ")
+        .replace(/<(script|style|noscript|template)\b[\s\S]*?<\/\1>/gi, " ")
+        .replace(/<[^>]+>/g, " "),
+    ),
+  );
+}
+
+function decodeEntities(text) {
+  const named = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "'", lsquo: "'", rdquo: '"', ldquo: '"', ndash: "-", mdash: "-", hellip: "..." };
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, code) => {
+    if (code[0] === "#") {
+      const n = code[1].toLowerCase() === "x" ? parseInt(code.slice(2), 16) : Number(code.slice(1));
+      return Number.isFinite(n) && n <= 0x10ffff ? String.fromCodePoint(n) : whole;
+    }
+    return named[code.toLowerCase()] ?? whole;
+  });
+}
+
+/** Lower case, typographic quotes and dashes made plain, one space between words: small layout differences don't count. */
+const normalise = (text) =>
+  text
+    .replace(/[\u2018\u2019\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u2033]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+/** Markdown inline text as a visitor reads it: links become their label, emphasis and code marks go. */
+const markdownText = (text) => normalise(text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`]/g, ""));
+
+/** `##` and `###` headings of a Markdown file, up to (not including) the sections the generator adds. */
+function headings(markdown, { stopAt = [] } = {}) {
+  const out = [];
+  for (const line of markdown.split("\n")) {
+    const m = /^#{2,3} (.+)$/.exec(line);
+    if (!m) continue;
+    if (stopAt.includes(m[1].trim())) break;
+    out.push(m[1].trim());
+  }
+  return out;
+}
+
+/** The meta description of an HTML page, normalised, or "". */
+const metaDescription = (html) => {
+  const tag = /<meta\b[^>]*name=["']description["'][^>]*>/i.exec(html)?.[0] ?? "";
+  return normalise(decodeEntities(/content=["']([^"']*)["']/i.exec(tag)?.[1] ?? ""));
+};
+
+/** schema.org Person or Organization nodes in the page's JSON-LD (blocks, arrays and @graph). */
+export function jsonLdEntities(html) {
+  const out = [];
+  const visit = (node) => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== "object") return;
+    if (node["@graph"]) visit(node["@graph"]);
+    const types = [].concat(node["@type"] ?? []).map(String);
+    const kind = types.includes("Person") ? "person" : types.some((t) => /Organization$|^(Corporation|LocalBusiness|NGO)$/.test(t)) ? "organization" : null;
+    if (kind && typeof node.name === "string") out.push({ kind, name: node.name, url: typeof node.url === "string" ? node.url : "" });
+  };
+  for (const m of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      visit(JSON.parse(m[1]));
+    } catch {
+      // Broken JSON-LD is the site's own problem, and not one this check reports.
+    }
+  }
+  return out;
+}
+
+const STALE_DAYS = 180;
+// The sections the generator adds to llms.txt after the home page's own text.
+const GENERATED_SECTIONS = ["Pages", "Files", "Contact"];
+
+/**
+ * Where the agent files and the live HTML disagree: words the copies carry that the site doesn't show, or
+ * details the site shows differently. Exact comparisons only, so a warning always names what to look at; a
+ * copy that says the same thing in other words is not caught. All of these warn, never fail.
+ */
+export function checkConsistency({ profile, llms, homeHtml, copies, now = new Date() }, { pass, warn }) {
+  const homeText = htmlText(homeHtml);
+  const allText = [homeText, ...[...copies.values()].map((c) => htmlText(c.html))].join(" ");
+  const allHtml = [homeHtml, ...[...copies.values()].map((c) => c.html)].join(" ");
+  const mismatch = (name, why) => warn(`mismatch: ${name}`, why);
+  let found = 0;
+  const flag = (name, why) => (found++, mismatch(name, why));
+
+  // A client-rendered page has (almost) no text in its HTML: comparing would only produce noise.
+  if (homeText.length < 80) {
+    warn("consistency", "the home page HTML has almost no text (rendered in the browser?), so the copies can't be compared with it");
+    return;
+  }
+
+  if (profile.name && !homeText.includes(normalise(profile.name))) flag("name", `"${profile.name}" (profile.json) is not on the home page`);
+  if (profile.headline && !homeText.includes(markdownText(profile.headline))) flag("headline", `"${profile.headline}" (profile.json) is not on the home page; it should be its main line, verbatim`);
+
+  // Contact: only details the site already shows publicly (writing.md, Privacy).
+  for (const [label, value] of Object.entries(profile.contact ?? {})) {
+    const v = String(value).trim();
+    const bare = v.replace(/^mailto:|^tel:/i, "").replace(/^https?:\/\/(www\.)?/i, "").replace(/\/+$/, "");
+    if (!allText.includes(normalise(bare)) && !decodeEntities(allHtml).toLowerCase().includes(bare.toLowerCase()))
+      flag(`contact ${label}`, `"${v}" is not shown on any page checked; list only contact details the site shows publicly`);
+  }
+
+  // Each copy: its title, summary and headings must be on the HTML page it copies.
+  for (const [page, copy] of copies) {
+    const text = htmlText(copy.html);
+    if (text.length < 40) continue;
+    const missing = [];
+    if (page.title && !text.includes(markdownText(page.title))) missing.push(`title "${page.title}"`);
+    if (page.summary && !text.includes(markdownText(page.summary)) && !metaDescription(copy.html).includes(markdownText(page.summary)))
+      missing.push(`summary "${page.summary}"`);
+    for (const h of headings(copy.markdown ?? "", { stopAt: ["Contact"] })) if (!text.includes(markdownText(h))) missing.push(`heading "${h}"`);
+    if (missing.length) flag(copy.path, `the Markdown copy has ${missing.join(", ")}, not on the page`);
+  }
+
+  // The home page's own text in llms.txt.
+  if (llms) {
+    const missing = headings(llms, { stopAt: GENERATED_SECTIONS }).filter((h) => !homeText.includes(markdownText(h)));
+    if (missing.length) flag("/llms.txt", `has heading${missing.length === 1 ? "" : "s"} ${missing.map((h) => `"${h}"`).join(", ")}, not on the home page`);
+  }
+
+  // JSON-LD on the home page: who the site says it is, in structured data.
+  for (const entity of jsonLdEntities(homeHtml)) {
+    if (profile.type && entity.kind !== profile.type && normalise(entity.name) === normalise(profile.name ?? ""))
+      flag("JSON-LD type", `the home page's JSON-LD calls "${entity.name}" a ${entity.kind}, profile.json says ${profile.type}`);
+  }
+  const ld = jsonLdEntities(homeHtml).filter((e) => !profile.type || e.kind === profile.type);
+  if (ld.length && profile.name && !ld.some((e) => normalise(e.name) === normalise(profile.name)))
+    flag("JSON-LD name", `the home page's JSON-LD names ${ld.map((e) => `"${e.name}"`).join(", ")}, profile.json says "${profile.name}"`);
+  const host = (url) => {
+    try {
+      return new URL(url).host.replace(/^www\./, "");
+    } catch {
+      return "";
+    }
+  };
+  for (const e of ld) {
+    if (e.url && profile.url && normalise(e.name) === normalise(profile.name ?? "") && host(e.url) && host(e.url) !== host(profile.url))
+      flag("JSON-LD url", `the home page's JSON-LD gives ${e.url}, profile.json says ${profile.url}`);
+  }
+
+  // The updated date: an old one suggests the copies no longer follow the site.
+  if (profile.updated) {
+    const days = Math.floor((now - new Date(profile.updated)) / 86400000);
+    if (Number.isNaN(days)) flag("updated", `"${profile.updated}" is not a date (use YYYY-MM-DD)`);
+    else if (days < -1) flag("updated", `${profile.updated} is in the future`);
+    else if (days > STALE_DAYS) flag("updated", `${profile.updated} is ${days} days ago; check the copies still match the site, then update it`);
+  }
+
+  if (!found) pass("the copies, profile.json and the live pages agree (name, headline, contact, titles, summaries, headings, JSON-LD)");
 }
 
 // ---------- AI crawlers ----------

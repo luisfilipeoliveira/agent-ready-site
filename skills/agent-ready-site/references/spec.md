@@ -76,3 +76,16 @@ The page's content in Markdown.
    The visible text is `<handle>.md`. Use the site's own link styling.
 5. **robots.txt** stays as it is. The reading preference is only a preference and blocks nothing. If there is a sitemap, add `/agents` to it.
    `check` reads robots.txt and warns when it blocks AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended and others) from `/llms.txt`. It also requests `/llms.txt` with each crawler's User-Agent and warns when the host refuses it. Both are the owner's choice: report them, don't change them. Blocks that verify the crawler's IP can't be tested this way.
+
+## Consistency (`check`)
+
+`check` compares the files with the live HTML and warns (`warn mismatch: …`) where they disagree. The comparison is exact, after ignoring case, spacing, typographic quotes and Markdown marks, so a copy that says the same thing in other words passes. It looks at:
+
+- the name and the headline from `profile.json`, on the home page;
+- each contact value, on at least one checked page (contact must already be public);
+- each copy's title, summary (or the page's meta description) and `##`/`###` headings, on its page;
+- the home page's headings in `/llms.txt`, on the home page;
+- JSON-LD on the home page: a `Person` or `Organization` whose type, name or domain differs from `profile.json`;
+- `updated`: not a date, in the future, or more than 180 days old.
+
+If the home page HTML has almost no text (a page rendered in the browser), the comparison is skipped with one warning.

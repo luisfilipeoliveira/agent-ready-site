@@ -81,7 +81,9 @@ npx agent-ready-site check http://localhost:3000
 ```
 
 `check` also warns if robots.txt or the host's bot protection turns AI crawlers away from `/llms.txt`. It tests
-robots.txt rules and User-Agent blocks; blocks that verify the crawler's IP can't be seen from outside.
+robots.txt rules and User-Agent blocks; blocks that verify the crawler's IP can't be seen from outside. It also
+warns where the files and the live pages disagree: a headline, a contact detail or a heading the site doesn't
+show, JSON-LD that names someone else, or an `updated` date older than six months.
 
 The spec and the recipes for each framework are in
 [`skills/agent-ready-site/references/`](skills/agent-ready-site/references/).

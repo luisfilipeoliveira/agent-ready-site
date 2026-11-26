@@ -136,12 +136,45 @@ try {
   await new Promise((r) => setTimeout(r, 400));
   try {
     const lines = [];
-    const ok = await check(`http://localhost:${port}`, { log: (line) => lines.push(line) });
+    const ok = await check(`http://localhost:${port}`, { log: (line) => lines.push(line), now: new Date("2026-02-15") });
     console.log(lines.map((l) => `     ${l}`).join("\n"));
     assert(ok, "check passes on the agent-ready static site");
+    assert(lines.some((l) => l.startsWith("ok   the copies, profile.json and the live pages agree")) && !lines.some((l) => l.includes("mismatch")), "check finds no mismatch when the copies follow the site");
     assert(lines.some((l) => l.startsWith("ok   robots.txt: none found")) && lines.some((l) => l.startsWith("ok   /llms.txt answers the")), "check reports no robots.txt and no User-Agent blocks");
   } finally {
     server.kill();
+  }
+
+  // Copies that drifted from the site: each disagreement is a warning that names it; the check still passes.
+  const siteDrift = readFileSync(join(dir, "agent-ready", "site.json"), "utf8");
+  const aboutCopy = join(dir, "agent-ready", "pages", "about.md");
+  const aboutBefore = readFileSync(aboutCopy, "utf8");
+  const homeHtmlPath = join(dir, "index.html");
+  const homeHtmlBefore = readFileSync(homeHtmlPath, "utf8");
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteDrift), headline: "Designer of everything.", contact: [{ label: "Phone", value: "+1 555 0100" }] }));
+  writeFileSync(aboutCopy, aboutBefore.replace("## How I work", "## How I used to work"));
+  writeFileSync(homeHtmlPath, homeHtmlBefore.replace("</head>", '<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Jane Doe","url":"https://example.org"}]}</script>\n</head>'));
+  build(dir);
+  const port3 = port + 2;
+  const drifting = spawn(process.execPath, [join(ROOT, "scripts", "serve-static.mjs"), dir, String(port3)], { stdio: "ignore" });
+  await new Promise((r) => setTimeout(r, 400));
+  try {
+    const lines = [];
+    const ok = await check(`http://localhost:${port3}`, { log: (line) => lines.push(line), now: new Date("2026-12-01") });
+    const has = (...parts) => lines.some((l) => l.startsWith("warn mismatch") && parts.every((p) => l.includes(p)));
+    assert(ok, "check still passes when the copies drift");
+    assert(has("headline", "Designer of everything."), "check flags a headline that is not on the home page");
+    assert(has("contact phone", "+1 555 0100"), "check flags a contact detail the site doesn't show");
+    assert(has("/about", 'heading "How I used to work"') && !has("/about", "How I work\""), "check flags a copy heading that is not on its page");
+    assert(has("JSON-LD type", "organization", "person") && has("updated", "304 days ago"), "check flags JSON-LD that disagrees with profile.json and a stale updated date");
+    assert(lines.some((l) => /\(\d+ where the files and the site disagree\)/.test(l)), "the summary counts the mismatches");
+    assert(!lines.some((l) => l.includes("agree (name")), "no all-clear line when something disagrees");
+  } finally {
+    drifting.kill();
+    writeFileSync(join(dir, "agent-ready", "site.json"), siteDrift);
+    writeFileSync(aboutCopy, aboutBefore);
+    writeFileSync(homeHtmlPath, homeHtmlBefore);
+    build(dir);
   }
 
   // A site that blocks AI crawlers in robots.txt and by User-Agent: the check warns but still passes.
