@@ -73,14 +73,16 @@ Clone this repository next to your site and tell your agent:
 
 ### By hand, with the CLI
 
-The package is not on npm yet, so run the CLI from a clone of this repository, from your site's root:
+From your site's root (Node 18 or later):
 
 ```bash
-node ../agent-ready-site/cli/bin.mjs init --name "Jane Doe" --handle jane --url https://example.com
+npx agent-ready-site init --name "Jane Doe" --handle jane --url https://example.com
 # write agent-ready/site.json and agent-ready/pages/*.md (see the spec)
 node agent-ready/build.mjs
-node ../agent-ready-site/cli/bin.mjs check http://localhost:3000
+npx agent-ready-site check http://localhost:3000
 ```
+
+From a clone of this repository, `node ../agent-ready-site/cli/bin.mjs` does the same as `npx agent-ready-site`.
 
 A site in several languages lists them in `site.json`, English first (`"languages": ["en", "pt"]`). The English
 copies stay in `agent-ready/pages/`; each further language keeps the site's own words in `agent-ready/pages/<lang>/`
