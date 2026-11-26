@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // End-to-end test on the static example: init -> fixture content -> build -> pointers -> serve -> check.
 // The Next.js example needs `npm install`, so it is covered by the manual steps in CONTRIBUTING.md.
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { init } from "../cli/init.mjs";
-import { build, sectionTitles } from "../cli/generator.mjs";
+import { build, parseFrontmatter, sectionTitles } from "../cli/generator.mjs";
 import { check, parseRobots, robotsAllows, siteFromJsonLd } from "../cli/check.mjs";
 import { addPointers } from "./lib/pointers.mjs";
 
@@ -270,24 +270,27 @@ try {
   try {
     cpSync(join(ROOT, "examples", "static-placeholder"), bi, { recursive: true });
     init(bi, {});
-    const biSite = { ...site, languages: ["en", "pt"], i18n: { pt: { headline: "Designer de produto que torna fluxos de checkout confusos em produtos que as pessoas terminam.", contactTitle: "Contacto" } } };
+    // The fixture's third page (not home, not about) stays untranslated, whatever the fixture is.
+    const otherFile = readdirSync(join(FIX, "pages")).find((f) => f.endsWith(".md") && f !== "index.md" && f !== "about.md");
+    const other = parseFrontmatter(readFileSync(join(FIX, "pages", otherFile), "utf8")).data;
+    const biSite = { ...site, languages: ["en", "pt"], i18n: { pt: { headline: "A frase principal da página inicial, em português.", contactTitle: "Contacto" } } };
     writeFileSync(join(bi, "agent-ready", "site.json"), JSON.stringify(biSite));
     cpSync(join(FIX, "pages"), join(bi, "agent-ready", "pages"), { recursive: true });
     const ptPages = join(bi, "agent-ready", "pages", "pt");
     mkdirSync(ptPages, { recursive: true });
-    writeFileSync(join(ptPages, "index.md"), "---\npath: /pt\ntitle: Início\norder: 0\n---\n\n## Trabalho selecionado\n\n- Checkout da Atlas.\n");
+    writeFileSync(join(ptPages, "index.md"), "---\npath: /pt\ntitle: Início\norder: 0\n---\n\n## Destaques\n\n- Um destaque.\n");
     writeFileSync(join(ptPages, "about.md"), "---\npath: /pt/sobre\ntitle: Sobre\nsummary: Desenho produtos digitais há doze anos.\norder: 10\n---\n\n## Como trabalho\n\nComeço pelos números.\n");
-    const page = (lang, title, body) => `<!doctype html>\n<html lang="${lang}">\n<head>\n<meta charset="utf-8">\n<title>${title}</title>\n</head>\n<body>\n<main>\n${body}\n</main>\n<footer>\n<span>Jane Doe</span>\n<a href="mailto:hello@example.com">hello@example.com</a>\n</footer>\n</body>\n</html>\n`;
+    const page = (lang, title, body) => `<!doctype html>\n<html lang="${lang}">\n<head>\n<meta charset="utf-8">\n<title>${title}</title>\n</head>\n<body>\n<main>\n${body}\n</main>\n<footer>\n<span>${site.name}</span>\n<a href="mailto:hello@example.com">hello@example.com</a>\n</footer>\n</body>\n</html>\n`;
     mkdirSync(join(bi, "pt", "sobre"), { recursive: true });
-    writeFileSync(join(bi, "pt", "index.html"), page("pt", "Jane Doe", `<h1>Jane Doe</h1>\n<p>${biSite.i18n.pt.headline}</p>\n<h2>Trabalho selecionado</h2>\n<p>Checkout da Atlas.</p>`));
+    writeFileSync(join(bi, "pt", "index.html"), page("pt", site.name, `<h1>${site.name}</h1>\n<p>${biSite.i18n.pt.headline}</p>\n<h2>Destaques</h2>\n<p>Um destaque.</p>`));
     writeFileSync(join(bi, "pt", "sobre", "index.html"), page("pt", "Sobre", "<h1>Sobre</h1>\n<p>Desenho produtos digitais há doze anos.</p>\n<h2>Como trabalho</h2>\n<p>Começo pelos números.</p>"));
     build(bi);
 
     const en = readFileSync(join(bi, "llms.txt"), "utf8");
     const pt = readFileSync(join(bi, "pt", "llms.txt"), "utf8");
     assert(en.includes("## Languages\n\n- [Português](https://example.com/pt/llms.txt) (pt)") && !en.includes("Not translated"), "/llms.txt links the other language's index");
-    assert(pt.startsWith("# Jane Doe\n\n> Designer de produto") && pt.includes("[Sobre](https://example.com/pt/sobre.md)") && pt.includes("## Contacto"), "/pt/llms.txt uses the Portuguese pages and site.json overrides");
-    assert(pt.includes("## Sem tradução\n\n- [Atlas checkout](https://example.com/work/atlas-checkout.md) (English)") && pt.includes("## Línguas\n\n- [English](https://example.com/llms.txt) (en)"), "/pt/llms.txt lists untranslated pages in their own language, never a made-up translation");
+    assert(pt.startsWith(`# ${site.name}\n\n> A frase principal`) && pt.includes("[Sobre](https://example.com/pt/sobre.md)") && pt.includes("## Contacto"), "/pt/llms.txt uses the Portuguese pages and site.json overrides");
+    assert(pt.includes(`## Sem tradução\n\n- [${other.title}](https://example.com${other.path}.md) (English)`) && pt.includes("## Línguas\n\n- [English](https://example.com/llms.txt) (en)"), "/pt/llms.txt lists untranslated pages in their own language, never a made-up translation");
     assert(["## Páginas", "## Sem tradução", "## Línguas", "## Ficheiros", "## Contacto"].every((t) => pt.includes(t)) && !/## (Pages|Files|Languages|Not translated)\b/.test(pt), "/pt/llms.txt has its generated section titles in Portuguese");
     assert(["## Pages", "## Languages", "## Files", "## Contact"].every((t) => en.includes(t)), "/llms.txt keeps its section titles in English");
     assert(readFileSync(join(bi, "about.md"), "utf8").includes("Also in: [Português](https://example.com/pt/sobre.md)") && existsSync(join(bi, "pt", "sobre.md")) && existsSync(join(bi, "pt", "llms-full.txt")), "page copies link their translations; each language has its full file");
@@ -366,7 +369,7 @@ try {
       const fails = lines.filter((l) => l.startsWith("FAIL"));
       assert(ok && !fails.length, `check passes on the bilingual site${fails.length ? `: ${fails.join("; ")}` : ""}`);
       assert(["ok   /pt/llms.txt", "ok   /pt links /pt/llms.txt", "ok   /pt/agents renders", "ok   each llms.txt links every page copy in its language"].every((p) => lines.some((l) => l.startsWith(p))), "check covers each language's index, home and /agents");
-      assert(lines.some((l) => l.startsWith("warn not translated (pt)") && l.includes("/work/atlas-checkout")) && !lines.some((l) => l.includes("hreflang")) && !lines.some((l) => l.includes("mismatch")), "check names the untranslated page, and finds the hreflang links and languages in order");
+      assert(lines.some((l) => l.startsWith("warn not translated (pt)") && l.includes(other.path)) && !lines.some((l) => l.includes("hreflang")) && !lines.some((l) => l.includes("mismatch")), "check names the untranslated page, and finds the hreflang links and languages in order");
       // A page whose <html lang> is wrong, and a translation not linked with hreflang.
       const ptAbout = join(bi, "pt", "sobre", "index.html");
       writeFileSync(ptAbout, readFileSync(ptAbout, "utf8").replace('<html lang="pt">', '<html lang="en">').replace(/<link[^>]*hreflang="en"[^>]*>\n/, ""));
