@@ -124,6 +124,68 @@ try {
   writeFileSync(join(dir, "agent-ready", "site.json"), siteBase);
   build(dir);
 
+  // ---------- sections and collections ----------
+  const siteCol = readFileSync(join(dir, "agent-ready", "site.json"), "utf8");
+  const aboutPath = join(pagesDir, "about.md");
+  const aboutBefore0 = readFileSync(aboutPath, "utf8");
+  writeFileSync(aboutPath, aboutBefore0.replace("order: 10", "order: 10\nsection: Company"));
+  mkdirSync(join(dir, "agent-ready", "data"), { recursive: true });
+  writeFileSync(
+    join(dir, "agent-ready", "data", "bikes.json"),
+    JSON.stringify({
+      items: [
+        { slug: "city-one", name: "City One", maker: { name: "Brand One" }, price: "€600", sizes: ["S", "M", "L"], video: "" },
+        { slug: "road-two", name: "Road Two", maker: { name: "Brand Two" }, price: "", sizes: [], video: "https://example.com/v/2" },
+      ],
+    }),
+  );
+  writeFileSync(join(dir, "agent-ready", "bike.md"), "## Maker\n\n{{maker.name}}, {{price}}.\n\n## Sizes\n\n{{list sizes}}\n\nVideo: {{video}}\n");
+  const bikes = { name: "bikes", section: "Bikes", source: "agent-ready/data/bikes.json", template: "agent-ready/bike.md", path: "/bikes/{{slug}}", title: "{{name}}", summary: "{{maker.name}}. {{join sizes}}", order: 50, full: false };
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteCol), sectionOrder: ["Bikes"], collections: [bikes] }));
+  build(dir);
+  const llmsCol = readFileSync(join(dir, "llms.txt"), "utf8");
+  const first = readFileSync(join(dir, "bikes", "city-one.md"), "utf8");
+  const second = readFileSync(join(dir, "bikes", "road-two.md"), "utf8");
+  assert(first.includes("Brand One, €600.") && first.includes("- S\n- M\n- L") && !first.includes("Video:"), "a collection writes one copy per item from its template, dropping empty lines");
+  assert(second.includes("Video: https://example.com/v/2") && !second.includes("## Sizes\n\n\n"), "empty list placeholders leave no blank runs");
+  assert(llmsCol.indexOf("## Bikes") < llmsCol.indexOf("## Company") && llmsCol.includes("## Pages") && llmsCol.includes("[City One](https://example.com/bikes/city-one.md): Brand One. S, M, L"), "llms.txt groups pages into sections, in sectionOrder first");
+  assert(llmsCol.includes("/bikes/*.md") && !llmsCol.includes("[/bikes/city-one.md]"), "the file list shows a collection as one entry");
+  const agentsCol = readFileSync(join(dir, "agents", "index.html"), "utf8");
+  assert(agentsCol.includes("<span>/bikes/*.md</span>") && !agentsCol.includes('href="/bikes/*.md"'), "/agents lists a collection without a broken link");
+  const fullCol = readFileSync(join(dir, "llms-full.txt"), "utf8");
+  assert(!fullCol.includes("# City One") && fullCol.includes("# About"), "full: false keeps a collection out of llms-full.txt");
+  const profileCol = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
+  assert(profileCol.pages.some((p) => p.section === "Bikes" && p.markdown.endsWith("/bikes/road-two.md")) && !profileCol.files.some((f) => f.includes("*")), "profile.json lists collection pages with their section, and no glob in files");
+  // An English copy name for a collection whose URLs are in another language.
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteCol), collections: [{ ...bikes, path: "/bicicletas/{{slug}}", markdown: "/bikes/{{slug}}" }] }));
+  build(dir);
+  const mapCol = JSON.parse(readFileSync(join(dir, "agent-ready", "markdown-map.json"), "utf8"));
+  assert(mapCol["/bicicletas/city-one"] === "/bikes/city-one.md" && existsSync(join(dir, "bikes", "city-one.md")), "a collection's markdown pattern gives its copies English names");
+
+  const reject = (siteJson, pattern, msg) => {
+    writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify(siteJson));
+    let message = "";
+    try {
+      build(dir);
+    } catch (error) {
+      message = error.message;
+    }
+    assert(pattern.test(message), `${msg}${message ? ` (got: ${message})` : ""}`);
+  };
+  const colBase = { ...JSON.parse(siteCol), collections: [bikes] };
+  reject({ ...colBase, collections: [{ ...bikes, path: "/bikes/{{slug}}/../../x" }] }, /plain site path/, "a collection path with .. is rejected");
+  reject({ ...colBase, collections: [{ ...bikes, path: "/bikes/{{missing}}" }] }, /need every field/, "a collection path with an empty field is rejected");
+  reject({ ...colBase, collections: [{ ...bikes, source: "../outside.json" }] }, /inside the site's folder/, "a collection source outside the site is rejected");
+  reject({ ...colBase, collections: [{ ...bikes, path: "/about" }] }, /Two pages have the path \/about/, "two pages with the same path are rejected");
+  reject({ ...colBase, collections: [{ ...bikes, path: "/" }] }, /can't produce the home page/, "a collection can't be the home page");
+
+  rmSync(join(dir, "agent-ready", "data"), { recursive: true });
+  rmSync(join(dir, "agent-ready", "bike.md"));
+  writeFileSync(aboutPath, aboutBefore0);
+  writeFileSync(join(dir, "agent-ready", "site.json"), siteCol);
+  build(dir);
+  assert(!existsSync(join(dir, "bikes", "city-one.md")), "removing a collection removes its copies");
+
   // Organization mode (the fixture's own): type in profile.json, the logo uncropped on /agents.
   // Person mode: a site.json without type. And a clear error on an unknown type.
   const fixtureProfile = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
@@ -406,6 +468,30 @@ try {
     }
   } finally {
     rmSync(bi, { recursive: true, force: true });
+  }
+
+  // ---------- Collections in two languages: matched by id, never inherited ----------
+  const colBi = mkdtempSync(join(tmpdir(), "agent-ready-colbi-"));
+  try {
+    mkdirSync(join(colBi, "agent-ready", "pages"), { recursive: true });
+    writeFileSync(join(colBi, "agent-ready", "pages", "index.md"), "---\npath: /\ntitle: Home\n---\n\nBikes.\n");
+    writeFileSync(join(colBi, "agent-ready", "bikes.json"), JSON.stringify([{ slug: "city-one", name: "City One" }, { slug: "road-two", name: "Road Two" }]));
+    writeFileSync(join(colBi, "agent-ready", "bicicletas.json"), JSON.stringify([{ slug: "cidade-um", ref: "city-one", nome: "Cidade Um" }]));
+    writeFileSync(join(colBi, "agent-ready", "bike.md"), "{{name}}\n");
+    writeFileSync(join(colBi, "agent-ready", "bicicleta.md"), "{{nome}}\n");
+    const en = { name: "bikes", section: "Bikes", source: "agent-ready/bikes.json", template: "agent-ready/bike.md", path: "/bikes/{{slug}}", title: "{{name}}", id: "{{slug}}" };
+    const pt = { name: "bikes", section: "Bicicletas", source: "agent-ready/bicicletas.json", template: "agent-ready/bicicleta.md", path: "/pt/bicicletas/{{slug}}", title: "{{nome}}", id: "{{ref}}" };
+    const colSite = { name: "Example Bikes", handle: "examplebikes", url: "https://example.com", headline: "Bike shop.", outDir: ".", languages: ["en", "pt"], collections: [en], i18n: { pt: { collections: [pt] } } };
+    writeFileSync(join(colBi, "agent-ready", "site.json"), JSON.stringify(colSite));
+    build(colBi);
+    const enCopy = readFileSync(join(colBi, "bikes", "city-one.md"), "utf8");
+    const ptLlms2 = readFileSync(join(colBi, "pt", "llms.txt"), "utf8");
+    assert(enCopy.includes("Also in: [Português](https://example.com/pt/bicicletas/cidade-um.md)") && ptLlms2.includes("## Bicicletas") && ptLlms2.includes("[Road Two](https://example.com/bikes/road-two.md) (English)"), "collection items in two languages are matched by id; a missing one is listed as not translated");
+    writeFileSync(join(colBi, "agent-ready", "site.json"), JSON.stringify({ ...colSite, i18n: { pt: {} } }));
+    build(colBi);
+    assert(!existsSync(join(colBi, "pt", "bicicletas", "cidade-um.md")) && !readFileSync(join(colBi, "pt", "llms.txt"), "utf8").includes("## Bikes"), "a further language doesn't inherit the English collections");
+  } finally {
+    rmSync(colBi, { recursive: true, force: true });
   }
 
   // ---------- A site whose root is in another language: / and /sobre in Portuguese, /en and /en/about in English ----------

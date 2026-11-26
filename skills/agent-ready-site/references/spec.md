@@ -4,7 +4,7 @@
 
 | URL | Content | Type |
 | --- | --- | --- |
-| `/llms.txt` | Index in the [llms.txt](https://llmstxt.org) format: `# Name`, `> headline`, reading preference, the home page's content, a `## Pages` list linking every copy, a `## Files` list and contact | text/plain or text/markdown |
+| `/llms.txt` | Index in the [llms.txt](https://llmstxt.org) format: `# Name`, `> headline`, reading preference, the home page's content, the page copies grouped into sections (`## Pages` by default, or `## Products`, `## Policies`, …), a `## Files` list and contact | text/plain or text/markdown |
 | `/llm.md` | The same as `/llms.txt` (some agents ask for this name) | text/markdown |
 | `/llms-full.txt` | `/llms.txt` plus every page copy, separated by `---`, with contact once at the end | text/plain |
 | `/profile.json` | The site's public details as JSON: type, name, headline, summary, location, contact, pages (url and markdown), files, plus anything in `site.profile` | application/json |
@@ -40,11 +40,54 @@ It also writes `agent-ready/markdown-map.json` (page path → copy, used by the 
   "agentsPage": { "title": "...", "lead": "...", "readme": ["optional lines"], "metaTitle": "...", "description": "..." },
   "theme": { "light": { "background": "oklch(1 0 0)", "foreground": "oklch(0.147 0.004 49.25)", "primary": "oklch(0.216 0.006 56.043)" }, "dark": { "border": "oklch(1 0 0 / 10%)" }, "radius": "0.45rem", "fontSans": "Inter, system-ui, sans-serif", "fontMono": "ui-monospace, monospace" },
   "extraFiles": [{ "path": "/sitemap.xml", "description": "Every page of the site." }],
-  "profile": { "any": "extra structured data to merge into profile.json" }
+  "profile": { "any": "extra structured data to merge into profile.json" },
+  "sectionOrder": ["Products", "Pages", "Policies"],
+  "collections": [
+    {
+      "name": "products",
+      "section": "Products",
+      "source": "data/products.json",
+      "template": "agent-ready/templates/product.md",
+      "path": "/products/{{slug}}",
+      "title": "{{name}}",
+      "summary": "{{tagline}} ({{join platforms}})",
+      "order": 20,
+      "full": true
+    }
+  ]
 }
 ```
 
 The required fields are `name`, `handle`, `url` and `headline`.
+
+`sectionOrder` is optional: the order of the `##` groups of pages in `/llms.txt`. Sections it doesn't name follow in the order of their first page. Pages without a `section` go under `Pages` (or `sections.pages`, see "Section titles" below). A section called `Optional` follows the llms.txt convention: agents short on context may skip it.
+
+### Collections
+
+Use a collection when many pages share one template and their content lives in a data file (products, posts, talks, case studies). Each item of the source becomes a page copy, so the copies never drift from the data.
+
+| Field | Required | What it is |
+| --- | --- | --- |
+| `name` | yes | An id for the collection |
+| `source` | yes | A JSON file inside the site's folder: an array of items, or an object with an `items` array. If the data is in TS, a CMS or a database, add a script that exports it to JSON before the build and point here |
+| `template` | yes | A Markdown file for the body of each copy |
+| `path` | yes | The page's URL, e.g. `/products/{{slug}}`. Must match the HTML page's URL |
+| `title` | yes | e.g. `{{name}}` |
+| `summary` | no | The one-line entry in `/llms.txt`, e.g. `{{tagline}} ({{join platforms}})` |
+| `markdown` | no | The English path of each copy when `path` is not in English, e.g. `path: /produtos/{{slug}}` with `markdown: /products/{{slug}}` |
+| `section` | no | The `/llms.txt` section (default: `name`) |
+| `order` | no | Where the collection sits among the pages (default 100); items keep the source's order |
+| `full` | no | `false` keeps the copies out of `/llms-full.txt` (for very large collections) |
+| `id` | no | What identifies an item across languages, e.g. `{{slug}}` (default: its position in the source) |
+
+Placeholders, in the template and in `path`, `markdown`, `title`, `summary` and `id`:
+- `{{key}}` and `{{nested.key}}`: a value from the item.
+- `{{join key}}`: an array as `a, b, c`.
+- `{{list key}}`: an array as a `- ` list, one item per line.
+
+In the template, a line whose placeholders are all empty is dropped, so `Price: {{price}}` disappears for an item without a price. In `path`, `markdown`, `title` and `id`, an empty placeholder is an error. The file list in `/llms.txt` and `/agents` shows a collection as one entry (`/products/*.md`); `/llms.txt` still links every copy. A collection can't produce the home page.
+
+**Language.** A collection copies its data as it is, and the default copies are in English. Put it at the top level when the data (or the fields the template uses, such as `name_en`) is in English. On a multilingual site, a collection whose data is in a further language goes in `i18n.<lang>.collections`; further languages never inherit the top-level collections. Items in two languages are translations of each other when their `id` is the same and the collections share a `name`. If the data exists only in a language other than English and the site has no `languages`, write those pages by hand, translated (`writing.md`, "Language"), instead of a collection.
 
 `init --jsonld <source>` fills these fields from the page's schema.org JSON-LD (an HTML file, a `.json` file or a URL): `type`, `name`, `url`, `description`, `avatar` (a person's `image`, an organization's `logo`), `location` (`address` or `homeLocation`) and `contact` (`email`, `telephone`, each `contactPoint` labelled by its `contactType`, and `sameAs` links labelled by site). When the page has several people or organizations, it takes the one the `WebSite` node names as `publisher`, `about` or `author`, or the kind given with `--type`. On an existing `site.json` it only fills fields that are missing, empty or still placeholders, and lists the ones it kept. It never sets `headline` or `handle`, nor `language`: when the `WebSite`'s `inLanguage` isn't English, it says so, and the imported text is translated into English.
 
@@ -75,13 +118,14 @@ An English page needs no `markdown`:
 path: /about
 title: About
 summary: One line, as the page states it.
+section: Pages
 order: 10
 ---
 
 The page's content in Markdown.
 ```
 
-`path: /` is the home page: its body goes into `/llms.txt` and it gets no separate copy. Pages are listed by `order`, then by path. Two pages can't write the same copy, and `markdown` can't be `/llms`, `/llm` or `/agents`. `agent-ready/markdown-map.json` maps each page's real URL to its copy (`"/sobre": "/about.md"`), so the alternate link and Accept negotiation use it.
+`path: /` is the home page: its body goes into `/llms.txt` and it gets no separate copy. Pages are listed by `order`, then by path. `section` is optional (see `sectionOrder` above). Two pages, written or from a collection, can't share a path. Two pages can't write the same copy, and `markdown` can't be `/llms`, `/llm` or `/agents`. `agent-ready/markdown-map.json` maps each page's real URL to its copy (`"/sobre": "/about.md"`), so the alternate link and Accept negotiation use it.
 
 ## Languages
 
@@ -91,7 +135,7 @@ A site in more than one language lists them in `site.json` → `languages`, Engl
 - **Per-language values.** `i18n.<lang>` overrides any `site.json` text for that language: `headline`, `description`, `location`, `readingPreference`, `contactTitle`, `contactText`, `contact`, `agentsPage`, `sections`. Anything it leaves out comes from the default language. Three keys are only for `i18n`: `prefix` (default `/<lang>`, for example `/pt`: where that language's generated files go), `home` (default: the prefix, see below) and `languageName` (default: the language's own name, "Português").
 - **Files.** Each language has its own `llms.txt`, `llm.md`, `llms-full.txt` and `/agents` under its prefix, with only its own pages. **One `llms.txt` per language**, never one file with every language: agents read `/llms.txt` first, so it stays short, in one language, and links the others in a `## Languages` section.
 - **Untranslated pages.** A page the site doesn't show in a further language is listed in that language's `llms.txt` under `## Not translated`, linked to the copy in the language it exists in. **Never translate a page into a further language**: its copies hold only the site's own words in that language. English is the one translation, in `agent-ready/pages/`.
-- **Section titles.** The sections the generator adds (`Pages`, `Not translated`, `Languages`, `Files`, and `Contact` when `contactTitle` is not set) are written in the language of the file, for en, pt, pt-BR, es, fr, de, it and nl; any other language gets English. A site sets its own with `sections`: `{ "pages": "…", "notTranslated": "…", "languages": "…", "files": "…" }` (top level for the default language, `i18n.<lang>.sections` for the others).
+- **Section titles.** The sections the generator adds (`Pages`, `Not translated`, `Languages`, `Files`, and `Contact` when `contactTitle` is not set) are written in the language of the file, for en, pt, pt-BR, es, fr, de, it and nl; any other language gets English. A site sets its own with `sections`: `{ "pages": "…", "notTranslated": "…", "languages": "…", "files": "…" }` (top level for the default language, `i18n.<lang>.sections` for the others). Page sections (`section`, a collection's `section`) are written as the site names them.
 - **A root in another language.** If the site's root is in another language and its English version lives under a path (`/` and `/sobre` in Portuguese, `/en` and `/en/about` in English), each language says where its home is: `"home": "/en"` at the top level for English, `"i18n": { "pt": { "home": "/" } }` for Portuguese. The English pages keep their real URLs (`path: /en`, `path: /en/about`) and take English copy names with `markdown` (`markdown: /about` → `/about.md`); the Portuguese pages keep theirs (`path: /`, `path: /sobre` → `/sobre.md`). The generated files don't move: English at the root (`/llms.txt`, `/agents`), Portuguese under its prefix (`/pt/llms.txt`, `/pt/agents`). `markdown-map.json` sends `/` to `/pt/llms.txt` and `/en` to `/llms.txt`, and each `/agents` page links back to its own home. A site with no English version at all doesn't use `languages`: it is one language, translated into English (see `writing.md`, "Language").
 - **Page copies** link their translations in an `Also in:` line under `Source:`.
 - **profile.json** gets `languages` (code, name, home, llms and headline for each) and every page of every language, each with its `language` and `alternates` (language → url and markdown).

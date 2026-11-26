@@ -8,6 +8,7 @@
  *                                       order, and markdown when the page's URL is not in English)
  *          agent-ready/pages/<lang>/*.md  the same for each further language in site.json "languages", in that
  *                                       language's own words; a page and its translation share a file name
+ *          collections                  a JSON data file + a Markdown template: one copy per item (products, posts…)
  * Writes (into site.json "outDir", default "public"):
  *          llms.txt, llm.md             index in llmstxt.org format: home text, then a link to each copy
  *          llms-full.txt                everything in one file
@@ -62,9 +63,103 @@ function readPages(dir, label) {
       const markdown = data.markdown ? "/" + String(data.markdown).replace(/^\/+|\/+$|\.md$/g, "") : path;
       if (data.markdown && (!/^\/[A-Za-z0-9._~\-/]+$/.test(markdown) || markdown.split("/").some((seg) => seg === "." || seg === "..")))
         throw new Error(`${label}/${file}: markdown "${data.markdown}" must be a plain site path like /about or /work/case`);
-      return { file, label, path, markdown, title: data.title, summary: data.summary ?? "", order: data.order ?? 100, body };
+      return { file, label, path, markdown, title: data.title, summary: data.summary ?? "", section: data.section ?? "", order: data.order ?? 100, full: true, body };
     })
     .sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
+}
+
+// ---------- collections: one page per item of a data file, through a Markdown template ----------
+
+const PLACEHOLDER = /\{\{\s*(?:(list|join)\s+)?([A-Za-z0-9_$-]+(?:\.[A-Za-z0-9_$-]+)*)\s*\}\}/g;
+
+function lookup(item, key) {
+  return key.split(".").reduce((value, part) => (value == null ? undefined : value[part]), item);
+}
+
+function renderValue(value, helper) {
+  if (value == null || value === "") return "";
+  if (Array.isArray(value)) {
+    const items = value.filter((v) => v != null && v !== "" && typeof v !== "object").map(String);
+    return helper === "list" ? items.map((v) => `- ${v}`).join("\n") : items.join(", ");
+  }
+  if (typeof value === "object") return "";
+  return String(value);
+}
+
+/**
+ * Fills `{{key}}`, `{{nested.key}}`, `{{join key}}` (an array as "a, b, c") and `{{list key}}` (an array as a
+ * "- " list). A line whose placeholders all come out empty is dropped, so optional fields leave no "Price: ".
+ */
+export function renderTemplate(template, item) {
+  const lines = template.split("\n").flatMap((line) => {
+    let placeholders = 0;
+    let filled = 0;
+    const out = line.replace(PLACEHOLDER, (_, helper, key) => {
+      placeholders++;
+      const value = renderValue(lookup(item, key), helper);
+      if (value) filled++;
+      return value;
+    });
+    return placeholders && !filled ? [] : [out];
+  });
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** One-line fields (path, title, summary, markdown, id): no line dropping. With `strict`, an empty placeholder is an error. */
+function fillLine(template, item, strict) {
+  return String(template).replace(PLACEHOLDER, (whole, helper, key) => {
+    const value = renderValue(lookup(item, key), helper);
+    if (!value && strict) throw new Error(`${whole} is empty`);
+    return value;
+  });
+}
+
+const plainPath = (path) => /^\/[A-Za-z0-9._~\-/]*$/.test(path) && path !== "/." && !path.split("/").some((seg) => seg === "." || seg === "..");
+
+/** A collection's pages: one per item of its JSON source, each body filled from its template. */
+function loadCollection(root, collection, index, where) {
+  where = `${where}[${index}]${collection?.name ? ` ("${collection.name}")` : ""}`;
+  for (const key of ["name", "source", "path", "title", "template"])
+    if (!collection?.[key]) throw new Error(`${where} needs "${key}".`);
+  const inside = (file, label) => {
+    const target = resolve(root, file);
+    if (!target.startsWith(root + sep)) throw new Error(`${where}: ${label} "${file}" must be inside the site's folder.`);
+    if (!existsSync(target)) throw new Error(`${where}: ${label} "${file}" does not exist.`);
+    return target;
+  };
+  const data = JSON.parse(readFileSync(inside(collection.source, "source"), "utf8"));
+  const items = Array.isArray(data) ? data : data?.items;
+  if (!Array.isArray(items)) throw new Error(`${where}: source must be a JSON array, or an object with an "items" array.`);
+  const template = readFileSync(inside(collection.template, "template"), "utf8").trim();
+  const order = collection.order ?? 100;
+  const clean = (raw) => (raw === "/" ? "/" : "/" + String(raw).replace(/^\/+|\/+$/g, ""));
+  return items.map((item, i) => {
+    let path, markdown, title, id;
+    try {
+      path = clean(fillLine(collection.path, item, true));
+      markdown = collection.markdown ? clean(fillLine(collection.markdown, item, true)).replace(/\.md$/, "") : path;
+      title = fillLine(collection.title, item, true).trim();
+      id = collection.id ? fillLine(collection.id, item, true) : String(i);
+    } catch (error) {
+      throw new Error(`${where} item ${i}: ${error.message} (path, markdown, title and id need every field they use).`);
+    }
+    if (!plainPath(path)) throw new Error(`${where} item ${i}: path "${path}" must be a plain site path like /about or /work/case`);
+    if (!plainPath(markdown) || (collection.markdown && markdown === "/")) throw new Error(`${where} item ${i}: markdown "${markdown}" must be a plain site path like /products/x`);
+    return {
+      // A page and its translation share a file name; for a collection item, that is the collection and its id.
+      file: `${collection.name}:${id}`,
+      label: where,
+      collection: collection.name,
+      path,
+      markdown,
+      title,
+      summary: collection.summary ? fillLine(collection.summary, item, false).trim() : "",
+      section: collection.section ?? collection.name,
+      order: order + i / (items.length + 1),
+      full: collection.full !== false,
+      body: renderTemplate(template, item),
+    };
+  });
 }
 
 /** A language's name in that language ("Português"), unless site.i18n[lang].languageName says otherwise. */
@@ -86,6 +181,7 @@ function languageName(lang, override) {
  * with `languages` holding all of them; a site.json without "languages" has one.
  */
 export function loadContent(root) {
+  root = resolve(root);
   const dir = join(root, "agent-ready");
   const sitePath = join(dir, "site.json");
   if (!existsSync(sitePath)) throw new Error(`Missing ${relative(process.cwd(), sitePath)}. Run \`agent-ready-site init\` first.`);
@@ -112,17 +208,25 @@ export function loadContent(root) {
     const prefix = isDefault ? "" : "/" + String(own.prefix ?? lang.toLowerCase()).replace(/^\/+|\/+$/g, "");
     if (!isDefault && !/^\/[A-Za-z0-9._~-]+(\/[A-Za-z0-9._~-]+)*$/.test(prefix))
       throw new Error(`agent-ready/site.json: the prefix for "${lang}" must be a plain path like /pt.`);
-    const all = readPages(isDefault ? pagesDir : join(pagesDir, lang), isDefault ? "agent-ready/pages" : `agent-ready/pages/${lang}`);
+    // Collections: the top-level ones are English (the default copies); each further language lists its own in
+    // i18n.<lang>.collections, from data in that language. They are never inherited from another language.
+    const collections = (isDefault ? site.collections : own.collections) ?? [];
+    if (!Array.isArray(collections)) throw new Error(`agent-ready/site.json: ${isDefault ? "" : `i18n.${lang}.`}collections must be a list.`);
+    const collected = collections.flatMap((c, n) => loadCollection(root, c, n, `agent-ready/site.json ${isDefault ? "" : `i18n.${lang}.`}collections`));
+    const all = [...readPages(isDefault ? pagesDir : join(pagesDir, lang), isDefault ? "agent-ready/pages" : `agent-ready/pages/${lang}`), ...collected].sort(
+      (a, b) => a.order - b.order || a.path.localeCompare(b.path),
+    );
     // The language's home page URL. By default the site root for English and the prefix for the others; a site
     // whose root is in another language sets "home" (English, e.g. /en) and i18n.<lang>.home (e.g. /).
     const ownHome = isDefault ? site.home : own.home;
     const homePath = ownHome == null ? prefix || "/" : "/" + String(ownHome).replace(/^\/+|\/+$/g, "");
     if (!/^\/[A-Za-z0-9._~\-/]*$/.test(homePath) || homePath.split("/").some((seg) => seg === "." || seg === ".."))
       throw new Error(`agent-ready/site.json: the home for "${lang}" must be a plain site path like / or /en, not "${ownHome}".`);
+    if (collected.some((page) => page.path === homePath)) throw new Error(`A collection can't produce the home page (${homePath}).`);
     const home = all.find((page) => page.path === homePath);
     for (const page of all) page.language = lang;
     const { i18n, languages: _, prefix: __, languageName: name, home: ___, ...rest } = { ...site, ...own };
-    return { site: { ...rest, language: lang }, lang, name: languageName(lang, name), prefix, homePath, isDefault, home, pages: all.filter((page) => page !== home) };
+    return { site: { ...rest, collections, language: lang }, lang, name: languageName(lang, name), prefix, homePath, isDefault, home, pages: all.filter((page) => page !== home) };
   });
 
   // One home per language: two languages can't share one.
@@ -135,8 +239,10 @@ export function loadContent(root) {
   const seen = new Map();
   for (const l of languages)
     for (const page of [l.home, ...l.pages].filter(Boolean)) {
-      if (seen.has(page.path)) throw new Error(`agent-ready/pages: "${page.path}" is used by both ${seen.get(page.path)} and ${l.lang}.`);
-      seen.set(page.path, l.lang);
+      const before = seen.get(page.path);
+      if (before?.lang === l.lang) throw new Error(`Two pages have the path ${page.path}: ${before.who} and ${page.label}/${page.file}.`);
+      if (before) throw new Error(`agent-ready/pages: "${page.path}" is used by both ${before.lang} and ${l.lang}.`);
+      seen.set(page.path, { lang: l.lang, who: `${page.label}/${page.file}` });
     }
 
   // One copy, one page: no two pages write the same .md, and none overwrites a generated file.
@@ -200,13 +306,41 @@ const section = (title, ...body) => [`## ${title}`, ...body.filter(Boolean)].joi
 const doc = (...parts) => parts.filter((part) => part).join("\n\n") + "\n";
 const mdPath = (page) => `${page.markdown ?? page.path}.md`;
 
+/**
+ * Pages grouped into llms.txt sections (`## Products`, `## Policies`, …). Pages without a section go under the
+ * Pages title (sections.pages). Sections follow `site.sectionOrder` first, then the order of their first page.
+ */
+export function pageSections({ site, pages }) {
+  const fallback = sectionTitles(site).pages;
+  const groups = new Map((Array.isArray(site.sectionOrder) ? site.sectionOrder : []).map((name) => [name, []]));
+  for (const page of pages) {
+    const name = page.section || fallback;
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(page);
+  }
+  return [...groups].filter(([, list]) => list.length).map(([title, list]) => ({ title, pages: list }));
+}
+
+/** A collection's copies as one entry ("/products/*.md"), so a catalogue of hundreds doesn't flood the file list. */
+function collectionEntries(site, pages) {
+  return (site.collections ?? []).flatMap((collection) => {
+    const items = pages.filter((page) => page.collection === collection.name);
+    if (!items.length) return [];
+    const glob = String(collection.markdown ?? collection.path).replace(PLACEHOLDER, "*").replace(/\.md$/, "").replace(/\/+$/, "");
+    const label = collection.section ?? collection.name;
+    return [{ path: `${glob.startsWith("/") ? "" : "/"}${glob}.md`, description: `Markdown copy of each of the ${items.length} ${label} pages.`, glob: true }];
+  });
+}
+
 export function agentFiles({ site, pages, prefix = "" }) {
+  const anyLeftOut = pages.some((page) => page.full === false);
   return [
     { path: `${prefix}/llms.txt`, description: "The entry point: the home page, a link to each page copy, and contact details." },
     { path: `${prefix}/llm.md`, description: `An alias of ${prefix}/llms.txt for tools that look for this name.` },
-    { path: `${prefix}/llms-full.txt`, description: "The index and every page copy, joined into a single file." },
+    { path: `${prefix}/llms-full.txt`, description: anyLeftOut ? "The index and the main page copies, joined into a single file." : "The index and every page copy, joined into a single file." },
     { path: "/profile.json", description: "Name, headline, pages and contact as JSON." },
-    ...pages.map((page) => ({ path: mdPath(page), description: `Markdown copy of the ${page.title} page.` })),
+    ...pages.filter((page) => !page.collection).map((page) => ({ path: mdPath(page), description: `Markdown copy of the ${page.title} page.` })),
+    ...collectionEntries(site, pages),
     ...(site.extraFiles ?? []),
     { path: `${prefix}/agents`, description: "A human-readable view of these files." },
   ];
@@ -243,7 +377,9 @@ export function buildLlmsTxt(content, { withContact = true } = {}) {
       [site.readingPreference && `Reading preference: ${site.readingPreference}`, site.updated && `Updated: ${site.updated}`].filter(Boolean),
     ),
     home?.body ?? "",
-    pages.length ? section(titles.pages, list(pages.map((p) => `[${p.title}](${site.url}${mdPath(p)})${p.summary ? `: ${p.summary}` : ""}`))) : "",
+    ...pageSections(content).map((group) =>
+      section(group.title, list(group.pages.map((p) => `[${p.title}](${site.url}${mdPath(p)})${p.summary ? `: ${p.summary}` : ""}`))),
+    ),
     ...languageSections(content),
     section(titles.files, list(agentFiles(content).map((f) => `[${f.path}](${site.url}${f.path}): ${f.description}`))),
     withContact ? contact(content) : "",
@@ -264,7 +400,7 @@ export function buildPageMd(content, page, { withContact = true } = {}) {
 
 export function buildLlmsFullTxt(content) {
   const parts = [buildLlmsTxt(content, { withContact: false }).trim()];
-  for (const page of content.pages) parts.push("---", buildPageMd(content, page, { withContact: false }).trim());
+  for (const page of content.pages.filter((p) => p.full !== false)) parts.push("---", buildPageMd(content, page, { withContact: false }).trim());
   const c = contact(content);
   if (c) parts.push("---", c);
   return doc(...parts);
@@ -279,6 +415,7 @@ export function buildProfileJson(content) {
   const pageEntry = (p) => ({
     title: p.title,
     summary: plain(p.summary),
+    ...(p.section ? { section: p.section } : {}),
     url: `${site.url}${p.path}`,
     markdown: `${site.url}${mdPath(p)}`,
     ...(content.multi
@@ -308,7 +445,7 @@ export function buildProfileJson(content) {
       : {}),
     pages: pages.map(pageEntry),
     ...(site.profile ? site.profile : {}),
-    files: (content.multi ? content.languages : [content]).flatMap((l) => agentFiles(l)).map((f) => `${site.url}${f.path}`).filter((f, i, all) => all.indexOf(f) === i),
+    files: (content.multi ? content.languages : [content]).flatMap((l) => agentFiles(l)).filter((f) => !f.glob).map((f) => `${site.url}${f.path}`).filter((f, i, all) => all.indexOf(f) === i),
   };
 }
 
@@ -475,7 +612,7 @@ export function buildAgentsHtml(content, sizes) {
       command: "ls -lh",
       output: agentFiles(content).map(
         (f) =>
-          `<div class="ls"><span class="m perm">-rw-r--r--</span><span class="m size">${formatSize(sizes[f.path])}</span><a href="${esc(base + f.path)}">${esc(f.path)}</a><span class="m desc"># ${esc(f.description)}</span></div>`,
+          `<div class="ls"><span class="m perm">-rw-r--r--</span><span class="m size">${formatSize(sizes[f.path])}</span>${f.glob ? `<span>${esc(f.path)}</span>` : `<a href="${esc(base + f.path)}">${esc(f.path)}</a>`}<span class="m desc"># ${esc(f.description)}</span></div>`,
       ),
     },
     { command: "cat llms.txt", stream: true, output: buildLlmsTxt(content).trimEnd().split("\n").map(markdownLineHtml) },

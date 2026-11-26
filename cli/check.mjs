@@ -403,9 +403,10 @@ export function checkConsistency({ profile, llms, homeHtml, copies, languageHome
     if (missing.length) flag(copy.path, `the Markdown copy has ${missing.join(", ")}, not on the page`);
   }
 
-  // The home page's own text in llms.txt.
+  // The home page's own text in llms.txt, which ends where the generated sections start (page sections included).
+  const stopAt = [...GENERATED_SECTIONS, ...new Set((profile.pages ?? []).map((p) => p.section).filter(Boolean))];
   if (llms) {
-    const missing = headings(withoutContact(llms, profile.contact), { stopAt: GENERATED_SECTIONS }).filter((h) => !homeText.includes(markdownText(h)));
+    const missing = headings(withoutContact(llms, profile.contact), { stopAt }).filter((h) => !homeText.includes(markdownText(h)));
     if (missing.length) flag("/llms.txt", `has heading${missing.length === 1 ? "" : "s"} ${missing.map((h) => `"${h}"`).join(", ")}, not on the home page`);
   }
 
@@ -414,7 +415,7 @@ export function checkConsistency({ profile, llms, homeHtml, copies, languageHome
     const text = htmlText(l.html);
     if (text.length < 80) continue;
     if (l.headline && !text.includes(markdownText(l.headline))) flag(`${l.path} headline`, `"${l.headline}" (${l.language}) is not on ${l.path}`);
-    const missing = l.llms ? headings(withoutContact(l.llms, profile.contact), { stopAt: GENERATED_SECTIONS }).filter((h) => !text.includes(markdownText(h))) : [];
+    const missing = l.llms ? headings(withoutContact(l.llms, profile.contact), { stopAt }).filter((h) => !text.includes(markdownText(h))) : [];
     if (missing.length) flag(l.llmsPath, `has heading${missing.length === 1 ? "" : "s"} ${missing.map((h) => `"${h}"`).join(", ")}, not on ${l.path}`);
   }
 
