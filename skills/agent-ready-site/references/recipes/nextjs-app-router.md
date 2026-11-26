@@ -8,14 +8,15 @@ Next.js 16 renamed `middleware.ts` to `proxy.ts`. On Next.js 15 or older, name t
 - With `output: "export"` there is no proxy. Treat the site as static: `/agents/index.html` is served at `/agents/` by most hosts, and Accept negotiation goes in the host config (see `static-html.md`).
 
 ## Alternate links
-In the root layout's metadata (this covers the home page):
+Put them in each page's `metadata` (or `generateMetadata`), never in the root layout: a page without its own `alternates` inherits the layout's, so a link (or a canonical) there would land on every page. The home page (`app/page.tsx`):
 ```ts
-alternates: { canonical: "/", types: { "text/markdown": "/llms.txt" } },
+alternates: { types: { "text/markdown": "/llms.txt" } },
 ```
-In each page's `metadata` (or `generateMetadata`). Next replaces `alternates` per page, so keep the page's canonical:
+Every other page:
 ```ts
-alternates: { canonical: "/about", types: { "text/markdown": "/about.md" } },
+alternates: { types: { "text/markdown": "/about.md" } },
 ```
+Next replaces `alternates` as a whole, so if the page or a layout above it already sets a canonical (or `languages`), repeat it in the same object: `alternates: { canonical: "/about", types: { … } }`. Don't add a canonical the site didn't have. Relative URLs need `metadataBase` in the root layout; if it is missing, add it with the production URL.
 For dynamic routes (`[slug]`), build the path in `generateMetadata`: `` `/work/${slug}.md` ``. Each slug needs its own `agent-ready/pages/*.md`. If a page's URL is not in English, its copy has an English name (`/sobre` → `/about.md`): take the href from `agent-ready/markdown-map.json` instead of adding `.md` to the path.
 
 ## Hidden hint
@@ -30,7 +31,7 @@ The first child of `<body>` in `app/layout.tsx`, using the site's `sr-only` clas
 ```tsx
 <span>
   Hey agent:{" "}
-  <Link href="/agents" aria-label="jane.md: Markdown version of this site for AI agents">jane.md</Link>
+  <Link href="/agents" prefetch={false} aria-label="jane.md: Markdown version of this site for AI agents">jane.md</Link>
 </span>
 ```
 Use `next/link` and the site's link class. `/agents` is a static file behind a rewrite, so `prefetch={false}` avoids a wasted RSC prefetch.
