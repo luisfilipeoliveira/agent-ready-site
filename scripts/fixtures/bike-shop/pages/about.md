@@ -3,6 +3,7 @@ path: /about
 title: About
 summary: We have sold and repaired bikes in Sample Town since 2014.
 order: 10
+source: about/index.html
 ---
 
 ## How we work

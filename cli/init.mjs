@@ -2,8 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { detect } from "./detect.mjs";
-import { SITE_TYPES } from "./generator.mjs";
-import { siteFromJsonLd } from "./check.mjs";
+import { routeFiles } from "./generator.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES = join(HERE, "..", "templates");
@@ -13,24 +12,21 @@ path: /
 title: Home
 summary: One line on what this page says.
 order: 0
+source: __HOME_SOURCE__
 ---
 
 Replace this with the home page's content, in Markdown, in the page's own order and headings.
 `;
 
-function placeholderSite({ framework, outDir, type = "person", name, handle, url }) {
-  const org = type === "organization";
+function placeholderSite({ framework, outDir, name, handle, url }) {
   return {
     framework,
     outDir,
-    type,
-    name: name ?? (org ? "Your Organization" : "Your Name"),
-    handle: handle ?? (org ? "yourorg" : "you"),
+    name: name ?? "Your Name",
+    handle: handle ?? "you",
     url: url ?? "https://example.com",
     language: "en",
-    headline: org
-      ? "One line on what the organization does, as the home page says it."
-      : "One line on who you are and what you do, as the home page says it.",
+    headline: "The home page's main line, as the site says it.",
     description: "",
     location: "",
     updated: new Date().toISOString().slice(0, 10),
@@ -46,39 +42,55 @@ function placeholderSite({ framework, outDir, type = "person", name, handle, url
   };
 }
 
+/** The hook commands init adds; a settings file that already runs agent-ready/sync.mjs for an event keeps it as it is. */
+function mergeSettings(path, log) {
+  const ours = JSON.parse(readFileSync(join(TEMPLATES, "claude", "settings.json"), "utf8"));
+  let settings = {};
+  if (existsSync(path)) {
+    try {
+      settings = JSON.parse(readFileSync(path, "utf8"));
+    } catch {
+      return log.push(`.claude/settings.json is not valid JSON: add the hooks from ${join("templates", "claude", "settings.json")} by hand.`);
+    }
+  }
+  settings.hooks ??= {};
+  const added = [];
+  for (const [event, groups] of Object.entries(ours.hooks)) {
+    const list = (settings.hooks[event] ??= []);
+    if (JSON.stringify(list).includes("agent-ready/sync.mjs")) continue;
+    list.push(...groups);
+    added.push(event);
+  }
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(settings, null, 2) + "\n");
+  log.push(added.length ? `.claude/settings.json: added the ${added.join(" and ")} hooks (sync before finishing, audit before a pull request).` : ".claude/settings.json: the agent-ready hooks were already there.");
+}
+
+/** A GitHub remote in .git/config: the repository runs GitHub Actions on its pull requests. */
+function onGitHub(root) {
+  const config = join(root, ".git", "config");
+  return existsSync(config) && /url\s*=\s*\S*github\.com[:/]/i.test(readFileSync(config, "utf8"));
+}
+
 /**
- * Fills site.json from JSON-LD. A new file takes every imported field; an existing one only fills fields that
- * are missing, empty or still the placeholder, so nothing the owner or an agent wrote is replaced.
+ * Keeping the files current: agent-ready/sync.mjs (the audit), the agent-ready-sync subagent and the
+ * Claude Code hooks that run it, and on GitHub a workflow that audits every pull request.
  */
-function applyJsonLd(site, html, { type }, log) {
-  const { fields, notes } = siteFromJsonLd(html, { type });
-  const placeholder = placeholderSite({ type: fields.type ?? site.type });
-  const unset = (key) => {
-    const v = site[key];
-    if (v === undefined || v === "" || (Array.isArray(v) && !v.length)) return true;
-    if (key === "type") return false; // the type follows the name: filled together below
-    return JSON.stringify(v) === JSON.stringify(placeholder[key]) || JSON.stringify(v) === JSON.stringify(placeholderSite({})[key]);
-  };
-  const filled = [];
-  const kept = [];
-  for (const [key, value] of Object.entries(fields)) {
-    if (key === "type" && type) continue; // --type wins
-    // The type is taken with the name: a site.json whose name is still the placeholder takes both.
-    if (key === "type" ? unset("name") : unset(key)) {
-      site[key] = value;
-      filled.push(key);
-    } else if (JSON.stringify(site[key]) !== JSON.stringify(value)) kept.push(key);
+function installSync(root, log) {
+  copyFileSync(join(HERE, "sync.mjs"), join(root, "agent-ready", "sync.mjs"));
+  log.push("Wrote agent-ready/sync.mjs (the audit: `node agent-ready/sync.mjs audit`).");
+  mkdirSync(join(root, ".claude", "agents"), { recursive: true });
+  copyFileSync(join(TEMPLATES, "claude", "agent-ready-sync.md"), join(root, ".claude", "agents", "agent-ready-sync.md"));
+  log.push("Wrote .claude/agents/agent-ready-sync.md (the subagent that updates the copies).");
+  mergeSettings(join(root, ".claude", "settings.json"), log);
+  if (onGitHub(root)) {
+    const workflow = join(root, ".github", "workflows", "agent-ready.yml");
+    if (!existsSync(workflow)) {
+      mkdirSync(dirname(workflow), { recursive: true });
+      copyFileSync(join(TEMPLATES, "github", "agent-ready.yml"), workflow);
+      log.push("Wrote .github/workflows/agent-ready.yml (audits every pull request).");
+    }
   }
-  // Became an organization: placeholders still written for a person switch to the organization ones.
-  if (filled.includes("type") && site.type === "organization") {
-    const person = placeholderSite({});
-    for (const key of ["handle", "headline"]) if (site[key] === person[key]) site[key] = placeholder[key];
-  }
-  log.push(...notes.slice(0, -1).filter((n) => !n.startsWith("Imported")));
-  if (filled.length) log.push(`site.json: filled ${filled.join(", ")} from JSON-LD.`);
-  if (kept.length) log.push(`site.json: kept your ${kept.join(", ")} (JSON-LD differs; check which one the site shows).`);
-  if (Object.keys(fields).length) log.push(notes[notes.length - 1]);
-  else log.push(notes[0]);
 }
 
 /**
@@ -127,29 +139,21 @@ export function init(root, options = {}) {
   const found = detect(root);
   const framework = options.framework ?? found.framework;
   const outDir = options.out ?? found.outDir;
-  if (options.type !== undefined && !SITE_TYPES.includes(options.type))
-    throw new Error(`--type must be ${SITE_TYPES.join(" or ")}, not "${options.type}".`);
   const log = [`Detected: ${framework} (files go to ${outDir}/).`];
   const dir = join(root, "agent-ready");
   mkdirSync(join(dir, "pages"), { recursive: true });
 
   const sitePath = join(dir, "site.json");
   if (!existsSync(sitePath) || options.force) {
-    const site = placeholderSite({ framework, outDir, ...options });
-    // Flags given on the command line beat JSON-LD: drop them from the placeholder check by marking them set.
-    if (options.jsonld) applyJsonLd(site, options.jsonld, options, log);
-    for (const key of ["name", "handle", "url"]) if (options[key]) site[key] = options[key];
-    writeFileSync(sitePath, JSON.stringify(site, null, 2) + "\n");
+    writeFileSync(sitePath, JSON.stringify(placeholderSite({ framework, outDir, ...options }), null, 2) + "\n");
     log.push("Wrote agent-ready/site.json (placeholders: fill it from the site).");
-  } else if (options.jsonld) {
-    const site = JSON.parse(readFileSync(sitePath, "utf8"));
-    applyJsonLd(site, options.jsonld, options, log);
-    writeFileSync(sitePath, JSON.stringify(site, null, 2) + "\n");
   } else log.push("Kept the existing agent-ready/site.json.");
 
   const homePath = join(dir, "pages", "index.md");
   if (!existsSync(homePath)) {
-    writeFileSync(homePath, PLACEHOLDER_HOME);
+    // The home page's route file, when the framework has one: the source the sync follows.
+    const homeRoute = routeFiles(root, { framework, outDir }).find((f) => /^(src\/)?(app\/page|pages\/index|src\/pages\/index|src\/routes\/\+page|index)\.[a-z]+$/.test(f) || f === (outDir === "." ? "index.html" : `${outDir}/index.html`));
+    writeFileSync(homePath, PLACEHOLDER_HOME.replace("__HOME_SOURCE__", homeRoute ?? ""));
     log.push("Wrote agent-ready/pages/index.md (placeholder home page).");
   }
 
@@ -158,6 +162,7 @@ export function init(root, options = {}) {
 
   wireScripts(root, found.pkg, log);
   if (framework === "nextjs") nextProxy(root, found.srcDir ?? "", log);
+  installSync(root, log);
 
   return { framework, outDir, log };
 }

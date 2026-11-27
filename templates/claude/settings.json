@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/agent-ready/sync.mjs\" stop" }] }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|mcp__github__create_pull_request",
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/agent-ready/sync.mjs\" pre-pr" }]
+      }
+    ]
+  }
+}

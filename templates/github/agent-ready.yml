@@ -1,0 +1,21 @@
+# Written by agent-ready-site. Fails a pull request whose agent files (agent-ready/pages/*.md, llms.txt…)
+# no longer match the site's pages. To fix it, ask Claude Code to "sync agent-ready", or run the
+# agent-ready-sync subagent.
+name: Copies for AI agents
+on:
+  pull_request:
+jobs:
+  audit:
+    name: Copies for AI agents are up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check the copies for AI agents
+        run: |
+          node agent-ready/sync.mjs audit || {
+            echo "::error::The copies for AI agents are out of date. Open Claude Code on this repository and say: update agent-ready."
+            exit 1
+          }

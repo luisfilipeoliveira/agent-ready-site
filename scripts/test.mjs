@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { init } from "../cli/init.mjs";
 import { build, parseFrontmatter, sectionTitles } from "../cli/generator.mjs";
-import { check, parseRobots, robotsAllows, siteFromJsonLd } from "../cli/check.mjs";
+import { check, parseRobots, robotsAllows } from "../cli/check.mjs";
 import { addPointers } from "./lib/pointers.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -186,47 +186,15 @@ try {
   build(dir);
   assert(!existsSync(join(dir, "bikes", "city-one.md")), "removing a collection removes its copies");
 
-  // Organization mode (the fixture's own): type in profile.json, the logo uncropped on /agents.
-  // Person mode: a site.json without type. And a clear error on an unknown type.
-  const fixtureProfile = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
-  assert(fixtureProfile.type === "organization" && readFileSync(join(dir, "agents", "index.html"), "utf8").includes('<div class="av org">'), "the bike shop fixture is an organization");
-  const siteOrg = readFileSync(join(dir, "agent-ready", "site.json"), "utf8");
-  const { type: _type, ...personSite } = JSON.parse(siteOrg);
-  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...personSite, name: "Jane Doe", handle: "jane" }));
+  // One kind of site: an old "type" in site.json is ignored, and /agents shows any avatar uncropped.
+  const siteBefore = readFileSync(join(dir, "agent-ready", "site.json"), "utf8");
+  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteBefore), type: "organization", avatar: "/logo.svg" }));
   build(dir);
-  const person = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
-  assert(person.type === "person" && person.name === "Jane Doe" && readFileSync(join(dir, "agents", "index.html"), "utf8").includes('<div class="av">'), "a site.json without type is a person");
-  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteOrg), name: "Example Co", handle: "example", avatar: "/logo.svg" }));
+  const typedProfile = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
+  const typedAgents = readFileSync(join(dir, "agents", "index.html"), "utf8");
+  assert(!("type" in typedProfile) && typedAgents.includes('<div class="av">') && typedAgents.includes('src="/logo.svg"') && typedAgents.includes("object-fit:contain"), "an old type is ignored and the avatar is shown uncropped");
+  writeFileSync(join(dir, "agent-ready", "site.json"), siteBefore);
   build(dir);
-  const orgProfile = JSON.parse(readFileSync(join(dir, "profile.json"), "utf8"));
-  const orgAgents = readFileSync(join(dir, "agents", "index.html"), "utf8");
-  assert(orgProfile.type === "organization" && orgProfile.name === "Example Co", "profile.json carries the organization type");
-  assert(orgAgents.includes('<div class="av org">') && orgAgents.includes('src="/logo.svg"') && orgAgents.includes("example.md</span>") && orgAgents.includes(".bar .av.org img{object-fit:contain"), "/agents shows an organization's logo uncropped");
-  writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteOrg), type: "company" }));
-  let typeError = "";
-  try {
-    build(dir);
-  } catch (error) {
-    typeError = error.message;
-  }
-  assert(typeError.includes('"type" must be "person" or "organization"'), "an unknown type is rejected");
-  writeFileSync(join(dir, "agent-ready", "site.json"), siteOrg);
-  build(dir);
-  const orgDir = mkdtempSync(join(tmpdir(), "agent-ready-org-"));
-  try {
-    init(orgDir, { type: "organization", framework: "static", out: "." });
-    const placeholder = JSON.parse(readFileSync(join(orgDir, "agent-ready", "site.json"), "utf8"));
-    assert(placeholder.type === "organization" && placeholder.handle === "yourorg" && placeholder.headline.includes("what the organization does"), "init --type organization writes organization placeholders");
-    let flagError = "";
-    try {
-      init(orgDir, { type: "team" });
-    } catch (error) {
-      flagError = error.message;
-    }
-    assert(flagError.includes("--type must be person or organization"), "init rejects an unknown --type");
-  } finally {
-    rmSync(orgDir, { recursive: true, force: true });
-  }
 
   // The build step goes inside dev and build (pnpm and Yarn 2+ skip pre scripts), once, and replaces old pre scripts.
   const pkgDir = mkdtempSync(join(tmpdir(), "agent-ready-pkg-"));
@@ -245,35 +213,6 @@ try {
     assert(svelte.framework === "sveltekit" && svelte.outDir === "static", "init detects SvelteKit and writes into static/");
   } finally {
     rmSync(pkgDir, { recursive: true, force: true });
-  }
-
-  // JSON-LD as a source for site.json: @graph, @id references, the WebSite's publisher, contact points, sameAs.
-  const ldHtml = `<html><head><script type="application/ld+json">${JSON.stringify({
-    "@context": "https://schema.org",
-    "@graph": [
-      { "@type": "WebSite", url: "https://example.com/", inLanguage: "pt-PT", publisher: { "@id": "#org" } },
-      { "@type": "Person", "@id": "#founder", name: "Jane Doe" },
-      { "@type": "Organization", "@id": "#org", name: "Example Co", url: "https://example.com/", description: "Tools for example teams.", logo: { "@type": "ImageObject", url: "https://example.com/logo.svg" }, address: { "@id": "#addr" }, founder: { "@id": "#founder" }, contactPoint: [{ "@type": "ContactPoint", contactType: "sales", email: "mailto:sales@example.com" }, { "@type": "ContactPoint", contactType: "customer support", telephone: "+1 555 0100" }], sameAs: ["https://www.linkedin.com/company/example", "https://github.com/example", "https://example.social/@co"] },
-      { "@type": "PostalAddress", "@id": "#addr", addressLocality: "Braga", addressCountry: { "@type": "Country", name: "Portugal" } },
-    ],
-  })}</script><script type="application/ld+json">{ broken</script></head></html>`;
-  const fromLd = siteFromJsonLd(ldHtml);
-  assert(fromLd.fields.type === "organization" && fromLd.fields.name === "Example Co" && fromLd.fields.url === "https://example.com", "JSON-LD import picks the entity the WebSite publishes, and skips broken blocks");
-  assert(fromLd.fields.avatar === "https://example.com/logo.svg" && fromLd.fields.location === "Braga, Portugal" && fromLd.fields.language === undefined && fromLd.notes.some((n) => n.includes('"pt-PT"') && n.includes("English")) && fromLd.fields.description === "Tools for example teams.", "JSON-LD import resolves @id references for the logo and address, and flags a site that isn't in English");
-  assert(JSON.stringify(fromLd.fields.contact) === JSON.stringify([{ label: "Sales email", value: "sales@example.com" }, { label: "Customer Support phone", value: "+1 555 0100" }, { label: "LinkedIn", value: "https://www.linkedin.com/company/example" }, { label: "GitHub", value: "https://github.com/example" }, { label: "example.social", value: "https://example.social/@co" }]), "JSON-LD import turns contact points and sameAs into labelled contacts");
-  assert(siteFromJsonLd(ldHtml, { type: "person" }).fields.name === "Jane Doe" && !("headline" in fromLd.fields), "--type picks the other entity, and the headline never comes from JSON-LD");
-  assert(Object.keys(siteFromJsonLd("<html></html>").fields).length === 0, "a page without JSON-LD imports nothing");
-  const ldDir = mkdtempSync(join(tmpdir(), "agent-ready-ld-"));
-  try {
-    const fresh = init(ldDir, { framework: "static", out: ".", jsonld: ldHtml });
-    const ldSite = JSON.parse(readFileSync(join(ldDir, "agent-ready", "site.json"), "utf8"));
-    assert(ldSite.type === "organization" && ldSite.name === "Example Co" && ldSite.headline.includes("what the organization does") && ldSite.handle === "yourorg" && fresh.log.some((l) => l.includes("filled type, name")), "init --jsonld fills a new site.json and leaves the headline and handle to the owner");
-    writeFileSync(join(ldDir, "agent-ready", "site.json"), JSON.stringify({ ...ldSite, name: "Example Company", description: "", contact: [] }));
-    const again = init(ldDir, { jsonld: ldHtml });
-    const merged = JSON.parse(readFileSync(join(ldDir, "agent-ready", "site.json"), "utf8"));
-    assert(merged.name === "Example Company" && merged.description === "Tools for example teams." && merged.contact.length === 5 && again.log.some((l) => l.includes("kept your name")), "init --jsonld on an existing site.json fills only empty fields and reports the rest");
-  } finally {
-    rmSync(ldDir, { recursive: true, force: true });
   }
 
   // robots.txt parsing for the AI crawler check (RFC 9309: own group over *, longest rule wins, allow wins ties).
@@ -307,12 +246,9 @@ try {
   const homeHtmlBefore = readFileSync(homeHtmlPath, "utf8");
   writeFileSync(join(dir, "agent-ready", "site.json"), JSON.stringify({ ...JSON.parse(siteDrift), headline: "Designer of everything.", contact: [{ label: "Phone", value: "+1 555 0100" }] }));
   const aboutHeading = aboutBefore.match(/^## (.+)$/m)[1];
-  // JSON-LD of the other type than the fixture's, and the fixture's own date, so the test holds for any fixture.
-  const fixtureType = site.type ?? "person";
-  const otherType = fixtureType === "person" ? "organization" : "person";
+  // The fixture's own date, so the test holds for any fixture.
   const staleDays = Math.round((new Date("2026-12-01") - new Date(site.updated)) / 86400000);
   writeFileSync(aboutCopy, aboutBefore.replace(`## ${aboutHeading}`, `## ${aboutHeading}, before`));
-  writeFileSync(homeHtmlPath, homeHtmlBefore.replace("</head>", `<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"${otherType === "person" ? "Person" : "Organization"}","name":${JSON.stringify(site.name)},"url":"https://example.org"}]}</script>\n</head>`));
   build(dir);
   const port3 = port + 2;
   const drifting = spawn(process.execPath, [join(ROOT, "scripts", "serve-static.mjs"), dir, String(port3)], { stdio: "ignore" });
@@ -325,7 +261,7 @@ try {
     assert(has("headline", "Designer of everything."), "check flags a headline that is not on the home page");
     assert(has("contact phone", "+1 555 0100"), "check flags a contact detail the site doesn't show");
     assert(has("/about", `heading "${aboutHeading}, before"`) && !has("/about", `heading "${aboutHeading}"`), "check flags a copy heading that is not on its page");
-    assert(has("JSON-LD type", otherType, fixtureType) && has("updated", `${staleDays} days ago`), "check flags JSON-LD that disagrees with profile.json and a stale updated date");
+    assert(has("updated", `${staleDays} days ago`), "check flags a stale updated date");
     assert(lines.some((l) => /\(\d+ where the files and the site disagree\)/.test(l)), "the summary counts the mismatches");
     assert(!lines.some((l) => l.includes("agree (name")), "no all-clear line when something disagrees");
   } finally {
@@ -499,7 +435,7 @@ try {
   try {
     mkdirSync(join(ptRoot, "agent-ready", "pages", "pt"), { recursive: true });
     const rootSite = {
-      type: "organization", name: "Example Bikes", handle: "examplebikes", url: "https://example.com", outDir: ".",
+      name: "Example Bikes", handle: "examplebikes", url: "https://example.com", outDir: ".",
       headline: "Bike shop in Sample Town.", home: "/en", languages: ["en", "pt"],
       contact: [{ label: "Email", value: "hello@example.com" }],
       i18n: { pt: { home: "/", headline: "Loja de bicicletas em Sample Town.", contactTitle: "Contacto" } },

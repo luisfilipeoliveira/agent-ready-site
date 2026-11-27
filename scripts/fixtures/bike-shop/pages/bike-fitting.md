@@ -3,6 +3,7 @@ path: /services/bike-fitting
 title: Bike fitting
 summary: A one-hour fitting that sets a bike up around its rider.
 order: 20
+source: services/bike-fitting/index.html
 ---
 
 ## Problem

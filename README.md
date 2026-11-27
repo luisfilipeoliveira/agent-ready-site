@@ -12,31 +12,90 @@ Make your website readable by AI agents, generated from the site's own content.
 More and more, the first reader of a website is an AI assistant working for someone else. Agents that
 read rendered layouts guess: they miss text in carousels, misread cards, and invent what isn't there.
 `agent-ready-site` gives them the same content as your pages, in plain Markdown, and shows people that
-it's there with a small link in the footer:
+it's there with a small link in the footer.
 
-> Hey agent: **examplebikes.md**
+## Get started in 2 minutes
 
-<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Example Bikes, 1 Example Street, Sample Town; hello@example.com; Hey agent: examplebikes.md" width="600">
+You don't need to know how to code. [Claude Code](https://claude.com/claude-code) does the work for you.
 
-## What it adds to your site
+1. **Open your website's project in Claude Code** (the desktop app or the terminal).
+2. **Add agent-ready-site.** Type these two lines in Claude Code, one at a time:
+   ```text
+   /plugin marketplace add luisfilipeoliveira/agent-ready-site
+   /plugin install agent-ready-site@agent-ready-site
+   ```
+3. **Type `/agent-ready`**, or just say *"Make this site readable by AI agents"*.
+
+Claude reads your pages, writes a copy of each one for AI agents (in every language your site has), adds a small
+"Hey agent" link to your footer and checks that it all works. It only asks for what it can't find on your site: the
+name to show, a short handle for the footer link, and your site's address.
+
+## What you get
+
+- **AI assistants read your site correctly.** Every page has a clean copy they can quote, instead of guessing from
+  the layout.
+- **One small visible change:** the "Hey agent" link in your footer, in your site's own style.
+- **A page for people** at `/agents`. AI agents don't need it: it's where the footer link takes your visitors, so
+  anyone can see exactly what AI assistants read on your site.
+
+## Keeping it up to date
+
+You don't need to do anything. When you change your site with Claude, the copies for AI agents update themselves,
+in every language, before Claude finishes. Before a pull request, they are checked again.
+
+If you change the site some other way, or just want to be sure, tell Claude:
+
+| Say this | Or type | What happens |
+| --- | --- | --- |
+| "Update agent-ready" | `/agent-ready-update` | The copies are brought up to date with your pages |
+| "Check agent-ready" | `/agent-ready-check` | You get a plain answer: all up to date, or which pages need an update |
+
+## Privacy
+
+Only what your site already shows to an anonymous visitor goes into these files. The skill never copies
+anything from behind a login, from drafts or from private notes, and adds no contact details your site doesn't
+already show.
+
+## For developers
+
+Everything above runs on a small Node CLI with no dependencies. This section is for people who want to see or run
+it themselves.
+
+### What it adds to your site
 
 | URL | What it is |
 | --- | --- |
 | `/llms.txt` (and `/llm.md`) | The index, in the [llms.txt](https://llmstxt.org) format: your home page, links to every page copy, and contact |
-| `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md`. Always in English: a page in another language is translated, and its copy gets an English name (`/sobre` → `/about.md`) |
+| `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md`. In English at the root; on a multilingual site, each further language also gets copies in its own words (`/pt/sobre.md`). A page whose URL isn't in English gets an English copy name (`/sobre` → `/about.md`) |
 | `/llms-full.txt` | Everything in one file |
 | `/profile.json` | Name, headline, pages and contact as JSON |
-| `/agents` | A page for people: the files, shown as a terminal session in a code-editor window that types itself out (no-JS and reduced-motion fallbacks, light and dark) |
+| `/agents` | A page for people that shows what agents read (see below) |
 
-### The /agents page
+#### The /agents page
+
+Agents read `/llms.txt` and the `.md` copies. `/agents` is not for them: it is the human view of the same files, the
+page the "Hey agent" footer link opens. Anyone can see there exactly what an AI assistant receives from the site.
+
+It shows the files as a terminal session in a code-editor window, in four steps:
+
+1. `whoami`: the page's title and lead (`agentsPage` in `site.json`).
+2. `cat README`: the site's reading preference, a note that what follows is the full set of files an agent receives,
+   unedited, and the `updated` date.
+3. `ls -lh`: every generated file with its size, a link to it and one line on what it is.
+4. `cat llms.txt`: the index, exactly as agents get it.
+
+The header shows the site's avatar (or its initial) and `<handle>.md`, with a link back to the site. The session
+types itself out; without JavaScript, or with reduced motion, it shows all at once. Light and dark follow the
+visitor's setting. A multilingual site gets one page per language (`/pt/agents`), each linking back to its own home.
+The page also links its `llms.txt` as a Markdown alternate, so an agent that lands on it is sent to the files.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/agents-dark.png">
   <img src="docs/agents-light.png" alt="The /agents page: an editor window with numbered lines and a shell session that runs whoami, cat README, ls -lh with the generated files and their sizes, and cat llms.txt" width="720">
 </picture>
 
-Screenshots of the placeholder example with the default tokens. A site can swap in its own colours, radius and
-fonts through `theme` in `agent-ready/site.json`.
+Screenshots of the placeholder example with the default tokens. A site can use its own colours, radius and fonts
+through `theme` in `agent-ready/site.json`, so the page looks like part of the site.
 
 It also points agents to these files:
 - a `<link rel="alternate" type="text/markdown">` on every page;
@@ -52,41 +111,31 @@ Pages that come from data, such as a product catalogue or a blog, don't need a f
 `site.json` points at the JSON and one Markdown template, and the build writes a copy per item. `/llms.txt` groups
 the copies into sections (`## Products`, `## Posts`, `## Policies`) the way the site is organised.
 
-## Install
+### Install without the Claude Code plugin
 
-### With Claude Code (recommended)
-
-```bash
-/plugin marketplace add luisfilipeoliveira/agent-ready-site
-/plugin install agent-ready-site@agent-ready-site
-```
-
-Then, in your website's repository, ask:
-
-> Make this site agent-ready.
-
-The skill scaffolds the files, reads your pages, writes the Markdown, wires the pointers, adds the footer
-link, builds the site and runs the checks. It asks you only for your name, the handle for `<handle>.md`
-and your production URL, if it can't find them.
-
-### With another coding agent (Cursor, Codex, Copilot…)
+#### With another coding agent (Cursor, Codex, Copilot…)
 
 Clone this repository next to your site and tell your agent:
 
 > Follow `../agent-ready-site/AGENTS.md` to make this site agent-ready.
 
-### By hand, with the CLI
+#### By hand, with the CLI
 
-From your site's root (Node 18 or later):
+You only need Node 18 or later. Clone this repository next to your site, then, from your site's root:
 
 ```bash
-npx agent-ready-site init --name "Jane Doe" --handle jane --url https://example.com
+node ../agent-ready-site/cli/bin.mjs init --name "Jane Doe" --handle jane --url https://example.com
 # write agent-ready/site.json and agent-ready/pages/*.md (see the spec)
 node agent-ready/build.mjs
-npx agent-ready-site check http://localhost:3000
+node agent-ready/sync.mjs audit
+node ../agent-ready-site/cli/bin.mjs check http://localhost:3000
 ```
 
-From a clone of this repository, `node ../agent-ready-site/cli/bin.mjs` does the same as `npx agent-ready-site`.
+After `init`, everything runs from your own repository with `node agent-ready/...`: no package manager needed.
+If your site has a `package.json`, `init` also adds the build step to its `dev` and `build` scripts (npm, pnpm, Yarn
+and Bun all work).
+
+Without a clone, the same CLI is on npm: `npx agent-ready-site` does the same as `node ../agent-ready-site/cli/bin.mjs`.
 
 A site in several languages lists them in `site.json`, English first (`"languages": ["en", "pt"]`). The English
 copies stay in `agent-ready/pages/`; each further language keeps the site's own words in `agent-ready/pages/<lang>/`
@@ -95,18 +144,15 @@ linked in the language they exist in, never translated. A site whose root is in 
 under a path (`/` in Portuguese, `/en` in English), sets `"home": "/en"` and `i18n.pt.home: "/"`; `/llms.txt` stays
 the English one.
 
-If the site already has schema.org JSON-LD, `init --jsonld http://localhost:3000` (or a built HTML or `.json`
-file) fills the name, URL, description, logo, location and contact from it. The headline and handle stay yours.
-
 `check` also warns if robots.txt or the host's bot protection turns AI crawlers away from `/llms.txt`. It tests
 robots.txt rules and User-Agent blocks; blocks that verify the crawler's IP can't be seen from outside. It also
 warns where the files and the live pages disagree: a headline, a contact detail or a heading the site doesn't
-show, JSON-LD that names someone else, or an `updated` date older than six months.
+show, or an `updated` date older than six months.
 
 The spec and the recipes for each framework are in
 [`skills/agent-ready-site/references/`](skills/agent-ready-site/references/).
 
-## Frameworks
+### Frameworks
 
 | Stack | Files | Accept negotiation |
 | --- | --- | --- |
@@ -116,7 +162,7 @@ The spec and the recipes for each framework are in
 | Vite SPA | `public/` | Host rules |
 | Plain HTML | next to `index.html` | Host rules (Vercel, Cloudflare); not possible on GitHub Pages |
 
-## What gets added to your repository
+### What gets added to your repository
 
 ```
 agent-ready/
@@ -124,18 +170,21 @@ agent-ready/
   pages/*.md       one Markdown copy per public page (you or your agent keep these current)
   templates/*.md   optional: one template per collection (product, post…), filled from your data
   build.mjs        the generator (runs before dev and build)
+  sync.mjs         the audit and the Claude Code hooks
+  sync-lock.json   what each copy and its source looked like at the last build (commit it)
   markdown-map.json, .generated.json   written by the generator
+.claude/           the agent-ready-sync subagent and the hooks (merged into your settings.json)
+.github/workflows/agent-ready.yml      the audit on every pull request (GitHub only)
 public/            llms.txt, llm.md, llms-full.txt, profile.json, the .md copies, agents/index.html
                    (static/ in SvelteKit, next to index.html on a plain HTML site)
 ```
 
-When your content changes, update the matching file in `agent-ready/pages/` and the build does the rest.
+Each copy names the file its words come from (`source: app/about/page.tsx`), which is how a change is noticed. To run
+the audit yourself:
 
-## Privacy
-
-Only what your site already shows to an anonymous visitor goes into these files. The skill never copies
-anything from behind a login, from drafts or from private notes, and adds no contact details your site doesn't
-already show.
+```bash
+node agent-ready/sync.mjs audit
+```
 
 ## License
 

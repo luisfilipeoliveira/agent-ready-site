@@ -3,7 +3,7 @@
  * agent-ready-site generator. Self-contained (Node 18+, no dependencies): `init` copies this file into the
  * site as agent-ready/build.mjs and wires it to the site's dev/build scripts.
  *
- * Reads:   agent-ready/site.json        the site's type (person or organization), name, handle, URL, contact, /agents copy
+ * Reads:   agent-ready/site.json        the site's name, handle, URL, contact, /agents copy
  *          agent-ready/pages/*.md       one Markdown copy per public page, in English (frontmatter: path, title, summary,
  *                                       order, and markdown when the page's URL is not in English)
  *          agent-ready/pages/<lang>/*.md  the same for each further language in site.json "languages", in that
@@ -19,6 +19,10 @@
  *          <prefix>/llms.txt, …         for each further language: its own index, full file and /agents page
  *                                       (each language's home is its prefix, or site.json "home" / i18n.<lang>.home)
  *          and agent-ready/markdown-map.json  page path -> Markdown copy, for Accept: text/markdown rewrites
+ *          and agent-ready/sync-lock.json     what each page's copy and "source" files looked like at the last
+ *                                       build, so a copy whose source changed is reported (commit it)
+ *
+ * `--accept` records the current sources as in step with their copies (after a change that didn't touch the text).
  *
  * Every word comes from site.json and the page files, which hold only what the site itself says.
  */
@@ -43,8 +47,18 @@ export function parseFrontmatter(text) {
   return { data, body: match[2].trim() };
 }
 
-/** Who the site is about: one person (a portfolio, a personal site) or an organization (a company, a studio, a project). */
-export const SITE_TYPES = ["person", "organization"];
+/**
+ * A page's `source`: the repository files its words come from, relative to the site's root. One path, or
+ * several separated by commas, optionally in brackets: `app/about/page.tsx` or `[app/about/page.tsx, lib/about.ts]`.
+ */
+export function parseSource(value, where) {
+  if (value == null || value === "") return [];
+  const list = String(value).replace(/^\[|\]$/g, "").split(",").map((s) => s.trim().replace(/^(['"])(.*)\1$/, "$2")).filter(Boolean);
+  for (const path of list)
+    if (path.startsWith("/") || /^[A-Za-z]:/.test(path) || path.split(/[\\/]/).includes(".."))
+      throw new Error(`${where}: source "${path}" must be a path inside the site's folder, like app/about/page.tsx`);
+  return list.map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""));
+}
 
 const LANGUAGE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 
@@ -63,7 +77,8 @@ function readPages(dir, label) {
       const markdown = data.markdown ? "/" + String(data.markdown).replace(/^\/+|\/+$|\.md$/g, "") : path;
       if (data.markdown && (!/^\/[A-Za-z0-9._~\-/]+$/.test(markdown) || markdown.split("/").some((seg) => seg === "." || seg === "..")))
         throw new Error(`${label}/${file}: markdown "${data.markdown}" must be a plain site path like /about or /work/case`);
-      return { file, label, path, markdown, title: data.title, summary: data.summary ?? "", section: data.section ?? "", order: data.order ?? 100, full: true, body };
+      const source = parseSource(data.source, `${label}/${file}`);
+      return { file, label, path, markdown, title: data.title, summary: data.summary ?? "", section: data.section ?? "", order: data.order ?? 100, full: true, body, source };
     })
     .sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
 }
@@ -189,8 +204,8 @@ export function loadContent(root) {
   for (const key of ["name", "handle", "url", "headline"]) {
     if (!site[key]) throw new Error(`agent-ready/site.json needs "${key}".`);
   }
-  site.type ??= "person";
-  if (!SITE_TYPES.includes(site.type)) throw new Error(`agent-ready/site.json: "type" must be ${SITE_TYPES.map((t) => `"${t}"`).join(" or ")}, not "${site.type}".`);
+  // "type" (person or organization) is no longer used: an older site.json may still have it.
+  delete site.type;
   site.url = site.url.replace(/\/+$/, "");
 
   const multi = Array.isArray(site.languages) && site.languages.length > 0;
@@ -423,7 +438,6 @@ export function buildProfileJson(content) {
       : {}),
   });
   return {
-    type: site.type ?? "person",
     name: site.name,
     headline: site.headline,
     ...(site.description ? { summary: site.description } : {}),
@@ -633,8 +647,6 @@ export function buildAgentsHtml(content, sizes) {
     })
     .join("");
   const last = row(prompt('<span class="cur blink"></span>'), ' data-k="last"');
-  // A person gets a round avatar; an organization's logo keeps its corners and is never cropped.
-  const org = site.type === "organization";
   const avatar =
     site.avatar && SAFE_URL.test(site.avatar)
       ? `<img src="${esc(site.avatar.startsWith("/") && !site.avatar.startsWith("//") ? base + site.avatar : site.avatar)}" alt="" width="40" height="40">`
@@ -666,10 +678,8 @@ a:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:c
 @media (min-width:640px){.win{min-height:calc(100svh - 3rem)}}
 .bar{display:grid;grid-template-columns:3rem 1fr;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);border-radius:calc(var(--radius) + 4px) calc(var(--radius) + 4px) 0 0;z-index:2;font-family:${sans}}
 .bar .av{display:flex;align-items:center;justify-content:center;border-right:1px solid var(--border);padding:.75rem 0}
-.bar .av a{display:block;border-radius:50%;text-decoration:none}
-.bar .av img,.ini{display:flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;border-radius:50%;object-fit:cover;background:var(--muted);color:var(--foreground);font-size:13px;font-weight:600}
-.bar .av.org a,.bar .av.org img,.bar .av.org .ini{border-radius:calc(var(--radius) - 2px)}
-.bar .av.org img{object-fit:contain;background:transparent}
+.bar .av a{display:block;border-radius:calc(var(--radius) - 2px);text-decoration:none}
+.bar .av img,.ini{display:flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;border-radius:calc(var(--radius) - 2px);object-fit:contain;background:var(--muted);color:var(--foreground);font-size:13px;font-weight:600}
 .bar .fn{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0 1rem 0 .75rem;color:var(--muted-foreground);min-width:0;font-size:13px}
 .bar .fn .file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:${mono}}
 .bar .meta{display:flex;align-items:center;gap:1rem;flex-shrink:0}
@@ -703,7 +713,7 @@ a:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:c
 </head>
 <body>
 <main class="win">
-<div class="bar"><div class="av${org ? " org" : ""}"><a href="${esc(home)}" aria-label="${esc(site.name)}, back to the home page">${avatar}</a></div><div class="fn"><span class="file">${esc(handle)}.md</span><span class="meta"><span class="x">Markdown</span><span class="x">UTF-8</span><a href="${esc(home)}">Back to the site</a></span></div></div>
+<div class="bar"><div class="av"><a href="${esc(home)}" aria-label="${esc(site.name)}, back to the home page">${avatar}</a></div><div class="fn"><span class="file">${esc(handle)}.md</span><span class="meta"><span class="x">Markdown</span><span class="x">UTF-8</span><a href="${esc(home)}">Back to the site</a></span></div></div>
 <div class="lines">${body}${last}</div>
 </main>
 <script>
@@ -742,11 +752,9 @@ export function safeTarget(outDir, path) {
   return target.startsWith(outDir + sep) ? target : null;
 }
 
-export function build(root = process.cwd()) {
-  const content = loadContent(root);
-  const outDir = resolve(root, content.site.outDir ?? "public");
+/** Every generated file, path -> text, for the site's content. Nothing is written. */
+export function renderFiles(content) {
   const bytes = (s) => Buffer.byteLength(s, "utf8");
-
   const files = new Map();
   files.set("/profile.json", JSON.stringify(buildProfileJson(content), null, 2) + "\n");
   for (const l of content.languages) {
@@ -758,6 +766,114 @@ export function build(root = process.cwd()) {
   }
   const sizes = Object.fromEntries([...files].map(([path, text]) => [path, bytes(text)]));
   for (const l of content.languages) files.set(`${l.prefix}/agents/index.html`, buildAgentsHtml(l, sizes));
+  return files;
+}
+
+const SKIP_DIRS = new Set(["node_modules", ".git", ".next", ".astro", ".svelte-kit", "dist", "build", "out", ".vercel", ".netlify", "agent-ready"]);
+
+/** Files under `dir` (relative to root, "/"-separated) whose relative path matches `test`. */
+function walk(root, dir, test, out = []) {
+  const base = join(root, dir);
+  if (!existsSync(base)) return out;
+  for (const entry of readdirSync(base, { withFileTypes: true })) {
+    if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) continue;
+    const rel = dir ? `${dir}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) walk(root, rel, test, out);
+    else if (test(rel)) out.push(rel);
+  }
+  return out;
+}
+
+/**
+ * The files that define the site's pages, one per route, relative to the site's root: what a page's
+ * `source` should name. Dynamic routes ([slug]) are left out (collections cover them), and so are error,
+ * API and framework files. Vite and other client-routed apps have no file per route: an empty list.
+ */
+export function routeFiles(root, { framework, outDir = "." } = {}) {
+  const dynamic = (rel) => /\[[^\]]*\]/.test(rel);
+  const notPage = (rel) => /(^|\/)(404|500|_error|_app|_document|not-found|error|loading|layout|template)\.[a-z]+$/.test(rel) || /(^|\/)api\//.test(rel);
+  const keep = (rel) => !dynamic(rel) && !notPage(rel);
+  if (framework === "nextjs") {
+    const app = (rel) => /(^|\/)page\.(tsx|jsx|ts|js|mdx|md)$/.test(rel);
+    const pages = (rel) => /\.(tsx|jsx|ts|js|mdx|md)$/.test(rel);
+    return [
+      ...walk(root, "app", app), ...walk(root, "src/app", app),
+      ...walk(root, "pages", pages), ...walk(root, "src/pages", pages),
+    ].filter(keep).sort();
+  }
+  if (framework === "astro") return walk(root, "src/pages", (rel) => /\.(astro|md|mdx|html)$/.test(rel)).filter(keep).sort();
+  if (framework === "sveltekit") return walk(root, "src/routes", (rel) => /(^|\/)\+page\.svelte$/.test(rel)).filter(keep).sort();
+  if (framework === "static") {
+    const generated = (rel) => /(^|\/)agents\/index\.html$/.test(rel);
+    return walk(root, outDir === "." ? "" : outDir, (rel) => rel.endsWith(".html") && !generated(rel)).filter(keep).sort();
+  }
+  return [];
+}
+
+// ---------- sync: is each copy still in step with the files its words come from? ----------
+
+const LOCK = "sync-lock.json";
+const hashOf = (text) => {
+  // FNV-1a, 64-bit: enough to notice a change, and no dependency on node:crypto's availability.
+  let h = 0xcbf29ce484222325n;
+  for (const byte of Buffer.from(text, "utf8")) h = BigInt.asUintN(64, (h ^ BigInt(byte)) * 0x100000001b3n);
+  return h.toString(16).padStart(16, "0");
+};
+const readHash = (file) => (existsSync(file) ? hashOf(readFileSync(file, "utf8")) : null);
+
+/** A page as a person names it: its title, and its language when the site has several ("Sobre" (Português)). */
+export function pageLabel(page, multi = true) {
+  return `"${page.title}"${multi && page.language ? ` (${languageName(page.language)})` : ""}`;
+}
+
+/** Every hand-written page of every language: home pages included, collection items left out (they follow their data). */
+export function trackedPages(content) {
+  return content.languages.flatMap((l) => [l.home, ...l.pages].filter((p) => p && !p.collection));
+}
+
+/**
+ * Each tracked page's state against agent-ready/sync-lock.json:
+ *   "ok"       the copy and its sources are as recorded (or the copy changed: it was updated)
+ *   "new"      not recorded yet
+ *   "stale"    a source changed and the copy didn't
+ *   "missing"  a source file no longer exists
+ *   "untracked" the page has no `source`
+ * Returns { pages: [{ key, page, state, changed, missing }], lock: the lock as it should be written }.
+ */
+export function syncStatus(root, content, { accept = false } = {}) {
+  root = resolve(root);
+  const lockPath = join(root, "agent-ready", LOCK);
+  const previous = existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, "utf8")) : {};
+  const before = previous.pages ?? {};
+  const lock = { pages: {} };
+  const pages = [];
+  for (const page of trackedPages(content)) {
+    const key = `${page.label}/${page.file}`;
+    const copy = readHash(join(root, key));
+    const sources = Object.fromEntries(page.source.map((s) => [s, readHash(join(root, s))]));
+    const missing = page.source.filter((s) => sources[s] === null);
+    const old = before[key];
+    let state;
+    let changed = [];
+    if (!page.source.length) state = "untracked";
+    else if (missing.length) state = "missing";
+    else if (!old) state = "new";
+    else if (old.copy !== copy) state = "ok";
+    else {
+      changed = page.source.filter((s) => old.sources?.[s] !== sources[s]);
+      state = changed.length ? "stale" : "ok";
+    }
+    pages.push({ key, page, state, changed, missing });
+    // A stale or broken page keeps its old record, so it is reported until its copy changes or it is accepted.
+    lock.pages[key] = (state === "stale" || state === "missing") && !accept ? old ?? { copy, sources } : { copy, sources };
+  }
+  return { pages, lock, lockPath };
+}
+
+export function build(root = process.cwd(), { accept = false, log = console.warn } = {}) {
+  const content = loadContent(root);
+  const outDir = resolve(root, content.site.outDir ?? "public");
+  const files = renderFiles(content);
 
   // Remove files a previous run wrote that no longer exist (a page was deleted or renamed).
   const ledgerPath = join(root, "agent-ready", ".generated.json");
@@ -777,14 +893,26 @@ export function build(root = process.cwd()) {
   }
   writeFileSync(ledgerPath, JSON.stringify([...files.keys()], null, 2) + "\n");
   writeFileSync(join(root, "agent-ready", "markdown-map.json"), JSON.stringify(buildMarkdownMap(content), null, 2) + "\n");
-  return { outDir, files: [...files.keys()], content };
+
+  // Copies that no longer follow their source: a warning, never a failure.
+  const status = syncStatus(root, content, { accept });
+  const warnings = [];
+  for (const p of status.pages) {
+    if (p.state === "stale" && !accept)
+      warnings.push(`the page ${pageLabel(p.page)} changed and its copy for AI agents didn't. Ask Claude to "update agent-ready". (${p.key}; ${p.changed.join(", ")} changed)`);
+    if (p.state === "missing")
+      warnings.push(`the page ${pageLabel(p.page)} was removed or moved, but its copy for AI agents is still there. Ask Claude to "update agent-ready". (${p.key}; ${p.missing.join(", ")} not found)`);
+  }
+  if (status.pages.some((p) => p.page.source.length)) writeFileSync(status.lockPath, JSON.stringify(status.lock, null, 2) + "\n");
+  for (const w of warnings) log(`agent-ready: ${w}`);
+  return { outDir, files: [...files.keys()], content, warnings };
 }
 
 // Run directly: `node agent-ready/build.mjs`
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const root = process.argv[1].endsWith(join("agent-ready", "build.mjs")) ? resolve(dirname(process.argv[1]), "..") : process.cwd();
-    const { outDir, files } = build(root);
+    const { outDir, files } = build(root, { accept: process.argv.includes("--accept") });
     console.log(`agent-ready: wrote ${files.length} files to ${relative(process.cwd(), outDir) || "."}`);
   } catch (error) {
     console.error(`agent-ready: ${error.message}`);

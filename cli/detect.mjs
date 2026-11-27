@@ -24,3 +24,4 @@ export function detect(root) {
   const outDir = existsSync(join(root, "index.html")) ? "." : existsSync(join(root, "public", "index.html")) ? "public" : ".";
   return { framework: "static", outDir, pkg };
 }
+

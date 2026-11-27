@@ -2,7 +2,8 @@
 
 If you were asked to make a website agent-ready with this project, follow
 [`skills/agent-ready-site/SKILL.md`](skills/agent-ready-site/SKILL.md) step by step, in the repository of the
-website (not in this one). Its references are in `skills/agent-ready-site/references/`.
+website (not in this one). Its references are in `skills/agent-ready-site/references/`. The site's owner may not be
+technical: run every command yourself and report in plain words, without file names or commands unless they ask.
 
 The CLI is `cli/bin.mjs` in this repository (`node <path-to-this-repo>/cli/bin.mjs init`), also published on npm
 as `npx agent-ready-site init`.
