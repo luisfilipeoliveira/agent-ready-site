@@ -77,16 +77,21 @@ Clone this repository next to your site and tell your agent:
 
 ### By hand, with the CLI
 
-From your site's root (Node 18 or later):
+You only need Node 18 or later. Clone this repository next to your site, then, from your site's root:
 
 ```bash
-npx agent-ready-site init --name "Jane Doe" --handle jane --url https://example.com
+node ../agent-ready-site/cli/bin.mjs init --name "Jane Doe" --handle jane --url https://example.com
 # write agent-ready/site.json and agent-ready/pages/*.md (see the spec)
 node agent-ready/build.mjs
-npx agent-ready-site check http://localhost:3000
+node agent-ready/sync.mjs audit
+node ../agent-ready-site/cli/bin.mjs check http://localhost:3000
 ```
 
-From a clone of this repository, `node ../agent-ready-site/cli/bin.mjs` does the same as `npx agent-ready-site`.
+After `init`, everything runs from your own repository with `node agent-ready/...`: no package manager needed.
+If your site has a `package.json`, `init` also adds the build step to its `dev` and `build` scripts (npm, pnpm, Yarn
+and Bun all work).
+
+Without a clone, the same CLI is on npm: `npx agent-ready-site` does the same as `node ../agent-ready-site/cli/bin.mjs`.
 
 A site in several languages lists them in `site.json`, English first (`"languages": ["en", "pt"]`). The English
 copies stay in `agent-ready/pages/`; each further language keeps the site's own words in `agent-ready/pages/<lang>/`
