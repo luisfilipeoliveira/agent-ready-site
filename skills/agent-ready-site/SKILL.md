@@ -1,6 +1,6 @@
 ---
 name: agent-ready-site
-description: Make a website readable by AI agents. Reads the site's own content and generates llms.txt, a Markdown copy of every public page, llms-full.txt, profile.json and an /agents page, points agents to them (alternate links, Accept text/markdown, a hidden hint) and adds a "Hey agent: <handle>.md" link to the footer. Use when asked to make a site agent-ready or readable by AI agents ("torna o site legível por agents"), add llms.txt, add Markdown copies for AI agents, install agent-ready-site, update or sync those copies after the site changed ("update agent-ready", "atualiza os ficheiros para agents"), or check that they are up to date. Works with Next.js, Astro, SvelteKit, Vite and plain HTML.
+description: Make a website readable by AI agents. Reads the site's own content and generates llms.txt, a Markdown copy of every public page, llms-full.txt, profile.json and an /agents page, points agents to them (alternate links, Accept text/markdown, a hidden hint) and adds a "Hey agent: <handle>.md" link to the footer. Use when asked to make a site agent-ready or readable by AI agents ("make my site readable by AI agents"), add llms.txt, add Markdown copies for AI agents, install agent-ready-site, update or sync those copies after the site changed ("update agent-ready", "update the copies for AI agents"), or check that they are up to date. Works with Next.js, Astro, SvelteKit, Vite and plain HTML.
 ---
 
 # agent-ready-site
