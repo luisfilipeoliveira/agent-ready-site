@@ -821,6 +821,11 @@ const hashOf = (text) => {
 };
 const readHash = (file) => (existsSync(file) ? hashOf(readFileSync(file, "utf8")) : null);
 
+/** A page as a person names it: its title, and its language when the site has several ("Sobre" (Português)). */
+export function pageLabel(page, multi = true) {
+  return `"${page.title}"${multi && page.language ? ` (${languageName(page.language)})` : ""}`;
+}
+
 /** Every hand-written page of every language: home pages included, collection items left out (they follow their data). */
 export function trackedPages(content) {
   return content.languages.flatMap((l) => [l.home, ...l.pages].filter((p) => p && !p.collection));
@@ -894,8 +899,9 @@ export function build(root = process.cwd(), { accept = false, log = console.warn
   const warnings = [];
   for (const p of status.pages) {
     if (p.state === "stale" && !accept)
-      warnings.push(`${p.key} may be out of date (${p.changed.join(", ")} changed). Ask Claude to sync it, or run \`node agent-ready/build.mjs --accept\` if it is still right.`);
-    if (p.state === "missing") warnings.push(`${p.key}: source ${p.missing.join(", ")} no longer exists. Update "source", or delete the page if it was removed.`);
+      warnings.push(`the page ${pageLabel(p.page)} changed and its copy for AI agents didn't. Ask Claude to "update agent-ready". (${p.key}; ${p.changed.join(", ")} changed)`);
+    if (p.state === "missing")
+      warnings.push(`the page ${pageLabel(p.page)} was removed or moved, but its copy for AI agents is still there. Ask Claude to "update agent-ready". (${p.key}; ${p.missing.join(", ")} not found)`);
   }
   if (status.pages.some((p) => p.page.source.length)) writeFileSync(status.lockPath, JSON.stringify(status.lock, null, 2) + "\n");
   for (const w of warnings) log(`agent-ready: ${w}`);

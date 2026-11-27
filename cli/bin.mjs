@@ -46,10 +46,10 @@ try {
     const { files, outDir } = build(root, { accept: Boolean(flags(rest).accept) });
     console.log(`agent-ready: wrote ${files.length} files to ${outDir}`);
   } else if (command === "audit") {
-    const { problems, configured } = audit(root);
-    if (!configured) throw new Error("no agent-ready/site.json here: run init first.");
-    if (problems.length) console.error(`agent-ready audit: ${problems.length} problem${problems.length === 1 ? "" : "s"}.\n- ${problems.join("\n- ")}`);
-    else console.log("agent-ready audit: the agent files match the site.");
+    const { problems, summary, configured } = audit(root);
+    if (!configured) throw new Error("this site isn't agent-ready yet: run init first.");
+    if (problems.length) console.error(`agent-ready: ${summary}\n\nDetails:\n- ${problems.join("\n- ")}`);
+    else console.log(`agent-ready: ${summary}`);
     const url = flags(rest).url;
     const live = typeof url === "string" ? await check(url) : true;
     process.exit(problems.length || !live ? 1 : 0);

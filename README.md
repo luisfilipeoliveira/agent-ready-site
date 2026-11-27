@@ -18,7 +18,53 @@ it's there with a small link in the footer:
 
 <img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Example Bikes, 1 Example Street, Sample Town; hello@example.com; Hey agent: examplebikes.md" width="600">
 
-## What it adds to your site
+## Get started in 2 minutes
+
+You don't need to know how to code. [Claude Code](https://claude.com/claude-code) does the work for you.
+
+1. **Open your website's project in Claude Code** (the desktop app or the terminal).
+2. **Add agent-ready-site.** Type these two lines in Claude Code, one at a time:
+   ```text
+   /plugin marketplace add luisfilipeoliveira/agent-ready-site
+   /plugin install agent-ready-site@agent-ready-site
+   ```
+3. **Type `/agent-ready`**, or just say *"Make this site readable by AI agents"*.
+
+Claude reads your pages, writes a copy of each one for AI agents (in every language your site has), adds a small
+"Hey agent" link to your footer and checks that it all works. It only asks for what it can't find on your site: the
+name to show, a short handle for the footer link, and your site's address.
+
+## What you get
+
+- **AI assistants read your site correctly.** Every page has a clean copy they can quote, instead of guessing from
+  the layout.
+- **One small visible change:** the "Hey agent" link in your footer, in your site's own style.
+- **A page for people** at `/agents` that shows what AI agents read on your site.
+
+## Keeping it up to date
+
+You don't need to do anything. When you change your site with Claude, the copies for AI agents update themselves,
+in every language, before Claude finishes. Before a pull request, they are checked again.
+
+If you change the site some other way, or just want to be sure, tell Claude:
+
+| Say this | Or type | What happens |
+| --- | --- | --- |
+| "Update agent-ready" | `/agent-ready-update` | The copies are brought up to date with your pages |
+| "Check agent-ready" | `/agent-ready-check` | You get a plain answer: all up to date, or which pages need an update |
+
+## Privacy
+
+Only what your site already shows to an anonymous visitor goes into these files. The skill never copies
+anything from behind a login, from drafts or from private notes, and adds no contact details your site doesn't
+already show.
+
+## For developers
+
+Everything above runs on a small Node CLI with no dependencies. This section is for people who want to see or run
+it themselves.
+
+### What it adds to your site
 
 | URL | What it is |
 | --- | --- |
@@ -28,7 +74,7 @@ it's there with a small link in the footer:
 | `/profile.json` | Name, headline, pages and contact as JSON |
 | `/agents` | A page for people: the files, shown as a terminal session in a code-editor window that types itself out (no-JS and reduced-motion fallbacks, light and dark) |
 
-### The /agents page
+#### The /agents page
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/agents-dark.png">
@@ -52,30 +98,15 @@ Pages that come from data, such as a product catalogue or a blog, don't need a f
 `site.json` points at the JSON and one Markdown template, and the build writes a copy per item. `/llms.txt` groups
 the copies into sections (`## Products`, `## Posts`, `## Policies`) the way the site is organised.
 
-## Install
+### Install without the Claude Code plugin
 
-### With Claude Code (recommended)
-
-```bash
-/plugin marketplace add luisfilipeoliveira/agent-ready-site
-/plugin install agent-ready-site@agent-ready-site
-```
-
-Then, in your website's repository, ask:
-
-> Make this site agent-ready.
-
-The skill scaffolds the files, reads your pages, writes the Markdown, wires the pointers, adds the footer
-link, builds the site, runs the checks and installs the sync that keeps it all current. It asks you only for your name, the handle for `<handle>.md`
-and your production URL, if it can't find them.
-
-### With another coding agent (Cursor, Codex, Copilot…)
+#### With another coding agent (Cursor, Codex, Copilot…)
 
 Clone this repository next to your site and tell your agent:
 
 > Follow `../agent-ready-site/AGENTS.md` to make this site agent-ready.
 
-### By hand, with the CLI
+#### By hand, with the CLI
 
 You only need Node 18 or later. Clone this repository next to your site, then, from your site's root:
 
@@ -108,7 +139,7 @@ show, or an `updated` date older than six months.
 The spec and the recipes for each framework are in
 [`skills/agent-ready-site/references/`](skills/agent-ready-site/references/).
 
-## Frameworks
+### Frameworks
 
 | Stack | Files | Accept negotiation |
 | --- | --- | --- |
@@ -118,7 +149,7 @@ The spec and the recipes for each framework are in
 | Vite SPA | `public/` | Host rules |
 | Plain HTML | next to `index.html` | Host rules (Vercel, Cloudflare); not possible on GitHub Pages |
 
-## What gets added to your repository
+### What gets added to your repository
 
 ```
 agent-ready/
@@ -135,7 +166,7 @@ public/            llms.txt, llm.md, llms-full.txt, profile.json, the .md copies
                    (static/ in SvelteKit, next to index.html on a plain HTML site)
 ```
 
-## Updates happen automatically
+### How the updates work
 
 `init` also installs a sync in your repository, so the copies follow the site in every language without you
 thinking about it:
@@ -152,12 +183,6 @@ the audit yourself:
 ```bash
 node agent-ready/sync.mjs audit
 ```
-
-## Privacy
-
-Only what your site already shows to an anonymous visitor goes into these files. The skill never copies
-anything from behind a login, from drafts or from private notes, and adds no contact details your site doesn't
-already show.
 
 ## License
 

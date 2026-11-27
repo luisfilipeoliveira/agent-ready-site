@@ -72,7 +72,7 @@ try {
   build(dir, { log: silent });
   assert(existsSync(join(dir, "agent-ready", "sync-lock.json")), "the build records each copy and its sources in sync-lock.json");
   let r = sync("audit");
-  assert(r.code === 0 && r.out.includes("match the site"), "the audit passes when every page has a copy in step with its source");
+  assert(r.code === 0 && r.out.includes("The copies for AI agents are up to date"), "the audit passes when every page has a copy in step with its source");
   assert(sync("stop", {}).out === "", "the Stop hook stays quiet when nothing is out of step");
   assert(sync("pre-pr", { tool_name: "Bash", tool_input: { command: "gh pr create --fill" } }).code === 0, "a pull request goes through when the audit passes");
 
@@ -80,15 +80,16 @@ try {
   file("pt/sobre/index.html", html("pt", "Sobre", "<h2>Como trabalhamos</h2><p>Primeiro um passeio de teste, depois a medição.</p>"));
   const warnings = [];
   build(dir, { log: (w) => warnings.push(w) });
-  assert(warnings.some((w) => w.includes("agent-ready/pages/pt/about.md may be out of date (pt/sobre/index.html changed)")), "the build warns when a Portuguese page changed and its copy didn't");
+  assert(warnings.some((w) => w.includes('the page "Sobre" (Português) changed and its copy for AI agents didn\'t. Ask Claude to "update agent-ready"') && w.includes("pt/sobre/index.html changed")), "the build warns when a Portuguese page changed and its copy didn't");
   r = sync("audit");
   assert(r.code === 1 && r.err.includes("agent-ready/pages/pt/about.md is out of date") && !r.err.includes("pages/about.md is"), "the audit fails on the Portuguese copy only");
+  assert(r.err.split("\n")[0] === 'agent-ready: The copies for AI agents need an update: "Sobre" (Português). Ask Claude to "update agent-ready".', "the audit opens with one plain sentence naming the page and its language");
   r = sync("stop", {});
   const stop = JSON.parse(r.out);
   assert(stop.decision === "block" && stop.reason.includes("pt/about.md") && stop.reason.includes("agent-ready-sync subagent"), "the Stop hook asks Claude to run the subagent before finishing");
   assert(sync("stop", { stop_hook_active: true }).out === "", "the Stop hook asks once, never in a loop");
   r = sync("pre-pr", { tool_name: "Bash", tool_input: { command: "git add . && gh pr create --fill" } });
-  assert(r.code === 2 && r.err.includes("agent-ready audit failed") && r.err.includes("pt/about.md"), "a pull request with gh is blocked while a copy is out of date");
+  assert(r.code === 2 && r.err.includes("fix this before the pull request") && r.err.includes("pt/about.md"), "a pull request with gh is blocked while a copy is out of date");
   assert(sync("pre-pr", { tool_name: "mcp__github__create_pull_request", tool_input: {} }).code === 2, "a pull request through the GitHub tools is blocked too");
   assert(sync("pre-pr", { tool_name: "Bash", tool_input: { command: "npm test" } }).code === 0, "other commands are never blocked");
 

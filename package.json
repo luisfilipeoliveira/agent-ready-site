@@ -19,6 +19,7 @@
     "cli",
     "templates",
     "skills",
+    "commands",
     ".claude-plugin",
     "AGENTS.md",
     "README.md",

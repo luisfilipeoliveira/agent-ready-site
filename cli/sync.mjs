@@ -18,11 +18,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 // In a site this file sits next to build.mjs (the generator); in this repository, next to generator.mjs.
 const generator = await import(pathToFileURL(existsSync(join(HERE, "build.mjs")) ? join(HERE, "build.mjs") : join(HERE, "generator.mjs")).href);
-const { loadContent, renderFiles, routeFiles, safeTarget, syncStatus } = generator;
+const { loadContent, pageLabel, renderFiles, routeFiles, safeTarget, syncStatus } = generator;
 
 /**
  * Everything that is out of step, as plain sentences. Each names the file to look at and what to do.
- * Returns { problems, configured }: `configured` is false when the site has no agent-ready/site.json yet.
+ * Returns { problems, summary, configured }: `summary` says the same in one line for a person, `configured` is
+ * false when the site has no agent-ready/site.json yet.
  */
 export function audit(root) {
   root = resolve(root);
@@ -31,13 +32,15 @@ export function audit(root) {
   try {
     content = loadContent(root);
   } catch (error) {
-    return { problems: [`The build fails: ${error.message}`], configured: true };
+    return { problems: [`The build fails: ${error.message}`], summary: "The copies for AI agents can't be built.", configured: true };
   }
   const problems = [];
+  const pages = []; // what a person would call each thing that needs an update
 
   // 1. Copies against their sources, in every language.
   const status = syncStatus(root, content);
   for (const p of status.pages) {
+    if (["stale", "missing", "untracked"].includes(p.state)) pages.push(pageLabel(p.page, content.multi));
     if (p.state === "stale") problems.push(`${p.key} is out of date: ${p.changed.join(", ")} changed since the copy was written.`);
     if (p.state === "missing") problems.push(`${p.key}: its source ${p.missing.join(", ")} no longer exists (page removed or moved).`);
     if (p.state === "untracked") problems.push(`${p.key} has no "source" in its frontmatter, so changes to its page can't be followed.`);
@@ -48,7 +51,7 @@ export function audit(root) {
   const sources = new Set(content.languages.flatMap((l) => [l.home, ...l.pages]).filter(Boolean).flatMap((p) => p.source ?? []));
   const ignored = new Set((site.syncIgnore ?? []).map(String));
   for (const file of routeFiles(root, { framework: site.framework, outDir: site.outDir ?? "public" }))
-    if (!sources.has(file) && !ignored.has(file))
+    if (!sources.has(file) && !ignored.has(file) && pages.push(`a new page (${file})`))
       problems.push(`${file} is a page with no copy. Add one in agent-ready/pages/ (and in each language it exists in), or list it in site.json "syncIgnore".`);
 
   // 3. Generated files on disk that the copies no longer produce (a copy changed, the build didn't run).
@@ -58,9 +61,12 @@ export function audit(root) {
     const target = safeTarget(outDir, path);
     if (target && existsSync(target) && readFileSync(target, "utf8") !== text) stale.push(path);
   }
-  if (stale.length) problems.push(`Generated files are out of date (${stale.slice(0, 5).join(", ")}${stale.length > 5 ? `, and ${stale.length - 5} more` : ""}): run node agent-ready/build.mjs.`);
+  if (stale.length && pages.push("the files built from them")) problems.push(`Generated files are out of date (${stale.slice(0, 5).join(", ")}${stale.length > 5 ? `, and ${stale.length - 5} more` : ""}): run node agent-ready/build.mjs.`);
 
-  return { problems, configured: true };
+  const summary = problems.length
+    ? `The copies for AI agents need an update: ${[...new Set(pages)].join(", ")}. Ask Claude to "update agent-ready".`
+    : "The copies for AI agents are up to date.";
+  return { problems, summary, configured: true };
 }
 
 const SYNC_ASK =
@@ -71,9 +77,9 @@ const SYNC_ASK =
 /** Stop hook: one request per stop, never a loop (Claude Code sets stop_hook_active on the follow-up stop). */
 export function stopHook(root, input = {}) {
   if (input.stop_hook_active) return null;
-  const { problems } = audit(root);
+  const { problems, summary } = audit(root);
   if (!problems.length) return null;
-  return { decision: "block", reason: `agent-ready: the agent files no longer match the site.\n- ${problems.join("\n- ")}\n\n${SYNC_ASK}` };
+  return { decision: "block", reason: `agent-ready: ${summary}\n- ${problems.join("\n- ")}\n\n${SYNC_ASK}` };
 }
 
 const PR_COMMAND = /\bgh\s+pr\s+create\b|\bgit\s+push\b/;
@@ -83,9 +89,9 @@ export function prePrHook(root, input = {}) {
   const tool = String(input.tool_name ?? "");
   const isPr = /create_pull_request$/.test(tool) || (tool === "Bash" && PR_COMMAND.test(String(input.tool_input?.command ?? "")));
   if (!isPr) return null;
-  const { problems } = audit(root);
+  const { problems, summary } = audit(root);
   if (!problems.length) return null;
-  return `agent-ready audit failed: fix this before the pull request.\n- ${problems.join("\n- ")}\n\n${SYNC_ASK}`;
+  return `agent-ready: fix this before the pull request. ${summary}\n- ${problems.join("\n- ")}\n\n${SYNC_ASK}`;
 }
 
 async function readStdin() {
@@ -105,11 +111,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const mode = process.argv[2] ?? "audit";
   try {
     if (mode === "audit") {
-      const { problems, configured } = audit(root);
-      if (!configured) console.log("agent-ready: no agent-ready/site.json here; nothing to audit.");
-      else if (!problems.length) console.log("agent-ready audit: the agent files match the site.");
+      const { problems, summary, configured } = audit(root);
+      if (!configured) console.log("agent-ready: this site isn't agent-ready yet. Ask Claude to \"make this site agent-ready\".");
+      else if (!problems.length) console.log(`agent-ready: ${summary}`);
       else {
-        console.error(`agent-ready audit: ${problems.length} problem${problems.length === 1 ? "" : "s"}.\n- ${problems.join("\n- ")}`);
+        console.error(`agent-ready: ${summary}\n\nDetails:\n- ${problems.join("\n- ")}`);
         process.exit(1);
       }
     } else if (mode === "stop") {
