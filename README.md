@@ -66,7 +66,7 @@ Then, in your website's repository, ask:
 > Make this site agent-ready.
 
 The skill scaffolds the files, reads your pages, writes the Markdown, wires the pointers, adds the footer
-link, builds the site and runs the checks. It asks you only for your name, the handle for `<handle>.md`
+link, builds the site, runs the checks and installs the sync that keeps it all current. It asks you only for your name, the handle for `<handle>.md`
 and your production URL, if it can't find them.
 
 ### With another coding agent (Cursor, Codex, Copilot…)
@@ -95,13 +95,10 @@ linked in the language they exist in, never translated. A site whose root is in 
 under a path (`/` in Portuguese, `/en` in English), sets `"home": "/en"` and `i18n.pt.home: "/"`; `/llms.txt` stays
 the English one.
 
-If the site already has schema.org JSON-LD, `init --jsonld http://localhost:3000` (or a built HTML or `.json`
-file) fills the name, URL, description, logo, location and contact from it. The headline and handle stay yours.
-
 `check` also warns if robots.txt or the host's bot protection turns AI crawlers away from `/llms.txt`. It tests
 robots.txt rules and User-Agent blocks; blocks that verify the crawler's IP can't be seen from outside. It also
 warns where the files and the live pages disagree: a headline, a contact detail or a heading the site doesn't
-show, JSON-LD that names someone else, or an `updated` date older than six months.
+show, or an `updated` date older than six months.
 
 The spec and the recipes for each framework are in
 [`skills/agent-ready-site/references/`](skills/agent-ready-site/references/).
@@ -124,12 +121,32 @@ agent-ready/
   pages/*.md       one Markdown copy per public page (you or your agent keep these current)
   templates/*.md   optional: one template per collection (product, post…), filled from your data
   build.mjs        the generator (runs before dev and build)
+  sync.mjs         the audit and the Claude Code hooks
+  sync-lock.json   what each copy and its source looked like at the last build (commit it)
   markdown-map.json, .generated.json   written by the generator
+.claude/           the agent-ready-sync subagent and the hooks (merged into your settings.json)
+.github/workflows/agent-ready.yml      the audit on every pull request (GitHub only)
 public/            llms.txt, llm.md, llms-full.txt, profile.json, the .md copies, agents/index.html
                    (static/ in SvelteKit, next to index.html on a plain HTML site)
 ```
 
-When your content changes, update the matching file in `agent-ready/pages/` and the build does the rest.
+## Updates happen automatically
+
+`init` also installs a sync in your repository, so the copies follow the site in every language without you
+thinking about it:
+
+- **When Claude Code changes your site**, a hook checks before it finishes. If a page changed and its copy didn't, or
+  a page was added or removed, the `agent-ready-sync` subagent updates the copies (English and each language), builds
+  and checks again.
+- **Before a pull request**, a hook runs the audit and blocks the PR until the copies match.
+- **On GitHub**, a workflow runs the same audit on every pull request, whoever opened it.
+
+Each copy names the file its words come from (`source: app/about/page.tsx`), which is how a change is noticed. To run
+the audit yourself:
+
+```bash
+node agent-ready/sync.mjs audit
+```
 
 ## Privacy
 

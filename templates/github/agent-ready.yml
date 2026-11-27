@@ -1,0 +1,15 @@
+# Written by agent-ready-site. Fails a pull request whose agent files (agent-ready/pages/*.md, llms.txt…)
+# no longer match the site's pages. To fix it, ask Claude Code to "sync agent-ready", or run the
+# agent-ready-sync subagent.
+name: agent-ready
+on:
+  pull_request:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node agent-ready/sync.mjs audit

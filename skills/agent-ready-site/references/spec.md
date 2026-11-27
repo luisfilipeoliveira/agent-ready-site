@@ -21,7 +21,6 @@ It also writes `agent-ready/markdown-map.json` (page path → copy, used by the 
 {
   "framework": "nextjs",
   "outDir": "public",
-  "type": "person",
   "name": "Jane Doe",
   "handle": "jane",
   "url": "https://example.com",
@@ -89,9 +88,7 @@ In the template, a line whose placeholders are all empty is dropped, so `Price: 
 
 **Language.** A collection copies its data as it is, and the default copies are in English. Put it at the top level when the data (or the fields the template uses, such as `name_en`) is in English. On a multilingual site, a collection whose data is in a further language goes in `i18n.<lang>.collections`; further languages never inherit the top-level collections. Items in two languages are translations of each other when their `id` is the same and the collections share a `name`. If the data exists only in a language other than English and the site has no `languages`, write those pages by hand, translated (`writing.md`, "Language"), instead of a collection.
 
-`init --jsonld <source>` fills these fields from the page's schema.org JSON-LD (an HTML file, a `.json` file or a URL): `type`, `name`, `url`, `description`, `avatar` (a person's `image`, an organization's `logo`), `location` (`address` or `homeLocation`) and `contact` (`email`, `telephone`, each `contactPoint` labelled by its `contactType`, and `sameAs` links labelled by site). When the page has several people or organizations, it takes the one the `WebSite` node names as `publisher`, `about` or `author`, or the kind given with `--type`. On an existing `site.json` it only fills fields that are missing, empty or still placeholders, and lists the ones it kept. It never sets `headline` or `handle`, nor `language`: when the `WebSite`'s `inLanguage` isn't English, it says so, and the imported text is translated into English.
-
-`type` is `"person"` (the default: a portfolio, a personal site) or `"organization"` (a company, a studio, a product, an open-source project). It goes into `profile.json` and sets the `/agents` header: a round avatar for a person, the logo uncropped with the site's radius for an organization. For an organization, `name` is the name the site uses for itself, `handle` its short brand name (`acme` → `acme.md`), `avatar` its logo and `contact` the public channels the site lists (for example Sales, Support, Press), each with its own label. People shown on the site (a team page, leadership) stay in that page's copy; add them to `site.profile` only if the owner asks.
+`avatar` is the photo or logo the site already uses; `/agents` shows it uncropped, with the site's radius. `contact` lists the public channels the site shows, each with its own label (Email, Phone, LinkedIn…). `syncIgnore` lists route files that should have no copy (404, legal, admin), so the audit doesn't report them.
 
 Every text field is in English, whatever the site's language, so `language` is `"en"`. A multilingual site lists `"en"` first in `languages`; each further language's own text goes in `i18n.<lang>` (see Languages).
 
@@ -108,6 +105,7 @@ markdown: /about
 title: About
 summary: One line, translated from the page.
 order: 10
+source: app/sobre/page.tsx
 ---
 ```
 
@@ -120,10 +118,38 @@ title: About
 summary: One line, as the page states it.
 section: Pages
 order: 10
+source: app/about/page.tsx, lib/about.ts
 ---
 
 The page's content in Markdown.
 ```
+
+`source` names the repository files the page's words come from, relative to the site's root, comma-separated: the
+route file and any data file it renders. Every hand-written page has one, in every language. The build records what
+each copy and its sources looked like in `agent-ready/sync-lock.json` (commit it) and warns when a source changed
+and its copy didn't; `build --accept` records a change that didn't touch the words.
+
+## Sync and audit
+
+`init` copies `agent-ready/sync.mjs` and installs the sync in the site:
+
+| File | What it does |
+| --- | --- |
+| `.claude/agents/agent-ready-sync.md` | The subagent that updates the copies in every language, builds and audits |
+| `.claude/settings.json` | A `Stop` hook (`sync.mjs stop`): before Claude finishes, if the audit finds something, it asks Claude to run the subagent, once per stop. A `PreToolUse` hook (`sync.mjs pre-pr`): blocks `gh pr create`, `git push` and the GitHub pull request tool while the audit fails |
+| `.github/workflows/agent-ready.yml` | On a GitHub repository: the audit on every pull request |
+
+Existing hooks in `.claude/settings.json` are kept; the agent-ready ones are added once.
+
+`node agent-ready/sync.mjs audit` (or `agent-ready-site audit`, with `--url` to also run `check`) reads only the
+repository and exits 1 when:
+
+- a page's `source` changed since its copy was written, in any language;
+- a `source` no longer exists (the page was removed or moved);
+- a hand-written page has no `source`;
+- a route file (`app/**/page.tsx`, `src/pages/**`, `src/routes/**/+page.svelte`, `*.html`) is in no page's
+  `source` and not in `syncIgnore`. Dynamic routes (`[slug]`) are left to collections;
+- a generated file on disk differs from what the copies produce (the build didn't run).
 
 `path: /` is the home page: its body goes into `/llms.txt` and it gets no separate copy. Pages are listed by `order`, then by path. `section` is optional (see `sectionOrder` above). Two pages, written or from a collection, can't share a path. Two pages can't write the same copy, and `markdown` can't be `/llms`, `/llm` or `/agents`. `agent-ready/markdown-map.json` maps each page's real URL to its copy (`"/sobre": "/about.md"`), so the alternate link and Accept negotiation use it.
 
@@ -167,7 +193,6 @@ A site in more than one language lists them in `site.json` → `languages`, Engl
 - each contact value, on at least one checked page (contact must already be public);
 - each copy's title, summary (or the page's meta description) and `##`/`###` headings, on its page;
 - the home page's headings in `/llms.txt`, on the home page;
-- JSON-LD on the home page: a `Person` or `Organization` whose type, name or domain differs from `profile.json`;
 - `updated`: not a date, in the future, or more than 180 days old.
 
 If the home page HTML has almost no text (a page rendered in the browser), the comparison is skipped with one warning.

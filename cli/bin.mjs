@@ -2,32 +2,24 @@
 import { resolve } from "node:path";
 import { build } from "./generator.mjs";
 import { init } from "./init.mjs";
-import { readFileSync } from "node:fs";
 import { check } from "./check.mjs";
+import { audit } from "./sync.mjs";
 
 const HELP = `agent-ready-site: make a website readable by AI agents.
 
 Usage
-  agent-ready-site init [--type person|organization] [--name "Jane Doe"] [--handle jane] [--url https://example.com] [--out public] [--framework nextjs|astro|sveltekit|vite|static] [--jsonld <file or URL>] [--force]
-      Scaffold agent-ready/ in the current site and wire the build step.
-      --jsonld fills site.json from the JSON-LD in a page (an HTML file, a .json file, or the running site's URL);
-      on an existing site.json it only fills fields that are still empty or placeholders.
-  agent-ready-site build
+  agent-ready-site init [--name "Jane Doe"] [--handle jane] [--url https://example.com] [--out public] [--framework nextjs|astro|sveltekit|vite|static] [--force]
+      Scaffold agent-ready/ in the current site, wire the build step, and install the sync: the audit, the
+      agent-ready-sync subagent and the Claude Code hooks (and a GitHub workflow on GitHub repositories).
+  agent-ready-site build [--accept]
       Generate llms.txt, the page copies, profile.json and /agents from agent-ready/.
+      --accept: the copies flagged as out of date are still right; stop flagging them.
+  agent-ready-site audit [--url http://localhost:3000]
+      Check that the copies still match the site's pages, in every language. Exit 1 if not.
+      --url also runs check against the running site.
   agent-ready-site check <url>
       Check a running or deployed site (e.g. http://localhost:3000).
 `;
-
-/** The page HTML holding the JSON-LD: fetched from a URL, read from a file; a .json file is wrapped as one block. */
-async function readJsonLdSource(source) {
-  if (/^https?:\/\//i.test(source)) {
-    const res = await fetch(source, { redirect: "follow" });
-    if (!res.ok) throw new Error(`--jsonld: ${source} answered ${res.status}`);
-    return res.text();
-  }
-  const text = readFileSync(resolve(source), "utf8");
-  return /\.json(ld)?$/i.test(source) ? `<script type="application/ld+json">${text}</script>` : text;
-}
 
 function flags(args) {
   const out = {};
@@ -47,15 +39,20 @@ const root = resolve(process.cwd());
 
 try {
   if (command === "init") {
-    const options = flags(rest);
-    if (options.jsonld === true) throw new Error("--jsonld needs an HTML or JSON file, or a URL such as http://localhost:3000");
-    if (typeof options.jsonld === "string") options.jsonld = await readJsonLdSource(options.jsonld);
-    const { log } = init(root, options);
+    const { log } = init(root, flags(rest));
     console.log(log.map((line) => `- ${line}`).join("\n"));
-    console.log("\nNext: fill agent-ready/site.json and agent-ready/pages/*.md from the site, then `node agent-ready/build.mjs`.");
+    console.log("\nNext: fill agent-ready/site.json and agent-ready/pages/*.md from the site (with a `source` for each page), then `node agent-ready/build.mjs`.");
   } else if (command === "build") {
-    const { files, outDir } = build(root);
+    const { files, outDir } = build(root, { accept: Boolean(flags(rest).accept) });
     console.log(`agent-ready: wrote ${files.length} files to ${outDir}`);
+  } else if (command === "audit") {
+    const { problems, configured } = audit(root);
+    if (!configured) throw new Error("no agent-ready/site.json here: run init first.");
+    if (problems.length) console.error(`agent-ready audit: ${problems.length} problem${problems.length === 1 ? "" : "s"}.\n- ${problems.join("\n- ")}`);
+    else console.log("agent-ready audit: the agent files match the site.");
+    const url = flags(rest).url;
+    const live = typeof url === "string" ? await check(url) : true;
+    process.exit(problems.length || !live ? 1 : 0);
   } else if (command === "check") {
     if (!rest[0]) throw new Error("check needs a URL, e.g. agent-ready-site check http://localhost:3000");
     const ok = await check(rest[0]);

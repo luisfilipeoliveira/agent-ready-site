@@ -3,6 +3,7 @@ path: /
 title: Home
 summary: Bike shop that sells, fits and repairs city, road and electric bikes.
 order: 0
+source: index.html
 ---
 
 ## Bikes we sell

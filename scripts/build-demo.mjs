@@ -36,6 +36,7 @@ addPointers(OUT, site);
 
 // The demo ships the generated site only; the agent-ready/ sources stay in the repo's fixtures.
 rmSync(join(OUT, "agent-ready"), { recursive: true, force: true });
+rmSync(join(OUT, ".claude"), { recursive: true, force: true });
 // GitHub Pages runs Jekyll by default, which skips some files; serve everything as is.
 writeFileSync(join(ROOT, "docs", ".nojekyll"), "");
 console.log(`demo: built ${URL_} into docs/demo/${existsSync(join(OUT, "agents", "index.html")) ? "" : " (no /agents?)"}`);
