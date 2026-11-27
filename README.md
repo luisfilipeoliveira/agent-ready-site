@@ -7,12 +7,15 @@
 
 **Live demo:** [a placeholder site made agent-ready](https://luisfilipeoliveira.github.io/agent-ready-site/demo/), with its [/agents page](https://luisfilipeoliveira.github.io/agent-ready-site/demo/agents/) and [llms.txt](https://luisfilipeoliveira.github.io/agent-ready-site/demo/llms.txt).
 
-Make your website readable by AI agents, generated from the site's own content.
+Make your website readable by AI agents, from the site's own content.
 
-More and more, the first reader of a website is an AI assistant working for someone else. Agents that
-read rendered layouts guess: they miss text in carousels, misread cards, and invent what isn't there.
-`agent-ready-site` gives them the same content as your pages, in plain Markdown, and shows people that
-it's there with a small link in the footer.
+More and more, the first reader of a website is an AI assistant working for someone else. Assistants that read
+the rendered layout guess: they miss text in carousels, misread cards and invent what isn't there.
+
+`agent-ready-site` gives them the words of every page as plain Markdown, in every language your site has, and keeps
+those copies up to date when the site changes. Nothing is invented: every word comes from your pages. It adds a
+small "Hey agent" link to your footer and an `/agents` page, so people can see what AI assistants read. You set it
+up in Claude Code in a couple of minutes, without writing code.
 
 ## Get started in 2 minutes
 
