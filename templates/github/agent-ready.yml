@@ -1,5 +1,5 @@
 # Written by agent-ready-site. Fails a pull request whose agent files (agent-ready/pages/*.md, llms.txt…)
-# no longer match the site's pages. To fix it, ask Claude Code to "sync agent-ready", or run the
+# no longer match the site's pages. To fix it, ask Claude Code to "update agent-ready", or run the
 # agent-ready-sync subagent.
 name: Copies for AI agents
 on:

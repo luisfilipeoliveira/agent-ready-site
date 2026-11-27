@@ -84,6 +84,12 @@ it themselves.
 | `/profile.json` | Name, headline, pages and contact as JSON |
 | `/agents` | A page for people that shows what agents read (see below) |
 
+On every page, agents are pointed to these files by:
+- a `<link rel="alternate" type="text/markdown">`;
+- a hidden first line in `<body>`;
+- `Accept: text/markdown` negotiation where your host allows it;
+- the **"Hey agent: `<handle>`.md"** footer link.
+
 #### The /agents page
 
 Agents read `/llms.txt` and the `.md` copies. `/agents` is not for them: it is the human view of the same files, the
@@ -109,12 +115,6 @@ The page also links its `llms.txt` as a Markdown alternate, so an agent that lan
 
 Screenshots of the placeholder example with the default tokens. A site can use its own colours, radius and fonts
 through `theme` in `agent-ready/site.json`, so the page looks like part of the site.
-
-It also points agents to these files:
-- a `<link rel="alternate" type="text/markdown">` on every page;
-- a hidden first line in `<body>`;
-- `Accept: text/markdown` negotiation where your host allows it;
-- the **"Hey agent: `<handle>`.md"** footer link.
 
 The content comes only from your site. The agent reads your pages (or the data files behind them) and writes
 one Markdown file per page in `agent-ready/pages/`. A tiny generator with no dependencies turns those files into
@@ -152,8 +152,8 @@ Without a clone, the same CLI is on npm: `npx agent-ready-site` does the same as
 
 A site in several languages lists them in `site.json`, English first (`"languages": ["en", "pt"]`). The English
 copies stay in `agent-ready/pages/`; each further language keeps the site's own words in `agent-ready/pages/<lang>/`
-and gets its own `llms.txt` and `/agents` under its prefix. Pages the site doesn't show in that language are
-linked in the language they exist in, never translated. A site whose root is in another language, with English
+and gets its own `llms.txt` and `/agents` under its prefix. Nothing is translated: a page that exists in only some
+languages gets copies only in those, and the other languages' `llms.txt` link to it under "Not translated". A site whose root is in another language, with English
 under a path (`/` in Portuguese, `/en` in English), sets `"home": "/en"` and `i18n.pt.home: "/"`; `/llms.txt` stays
 the English one.
 

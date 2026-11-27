@@ -29,6 +29,10 @@ You keep this site's Markdown copies for AI agents in step with the site itself.
    - **Source no longer exists:** if the page was removed, delete its copies in every language; if it moved, fix `source`.
    - **No `source`:** find the file the page's words come from and add it.
    - **Generated files out of date:** step 3 fixes it.
+   - **The build fails, or the audit couldn't run:** read the error. It names the file and the field to fix (usually in
+     `agent-ready/site.json` or a page's frontmatter). Fix that, never the site's own pages.
+   - **The record of past checks could not be read** (`agent-ready/sync-lock.json`, often after a merge conflict):
+     delete it; step 3 writes it again.
 3. Set `updated` in `agent-ready/site.json` to today's date if any copy changed. Run `node agent-ready/build.mjs`.
    If it still warns about a copy you checked and left as it is, run `node agent-ready/build.mjs --accept`.
 4. Run `node agent-ready/sync.mjs audit` again. Repeat until it reports nothing.

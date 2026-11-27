@@ -7,7 +7,7 @@
 | `/llms.txt` | Index in the [llms.txt](https://llmstxt.org) format: `# Name`, `> headline`, reading preference, the home page's content, the page copies grouped into sections (`## Pages` by default, or `## Products`, `## Policies`, …), a `## Files` list and contact | text/plain or text/markdown |
 | `/llm.md` | The same as `/llms.txt` (some agents ask for this name) | text/markdown |
 | `/llms-full.txt` | `/llms.txt` plus every page copy, separated by `---`, with contact once at the end | text/plain |
-| `/profile.json` | The site's public details as JSON: type, name, headline, summary, location, contact, pages (url and markdown), files, plus anything in `site.profile` | application/json |
+| `/profile.json` | The site's public details as JSON: name, headline, summary, location, contact, pages (url and markdown), files, plus anything in `site.profile` | application/json |
 | `<page path>.md` | One copy per page: `/about` → `/about.md`, `/work/case` → `/work/case.md`. A page with `markdown` uses that path instead: `/sobre` with `markdown: /about` → `/about.md`. Starts `# Title`, `Source: <url>`, `> summary`, then the body and contact | text/markdown |
 | `/agents` | A page for people: the files above shown as a terminal session in a code-editor window (`whoami`, `cat README`, `ls -lh` with real sizes, `cat llms.txt`) that types itself out. Every word is in the HTML; without JavaScript or with reduced motion it shows at once. Light and dark (`prefers-color-scheme`, or `<html class="dark">` / `"light"`) | text/html |
 
@@ -136,7 +136,7 @@ and its copy didn't; `build --accept` records a change that didn't touch the wor
 | File | What it does |
 | --- | --- |
 | `.claude/agents/agent-ready-sync.md` | The subagent that updates the copies in every language, builds and audits |
-| `.claude/settings.json` | A `Stop` hook (`sync.mjs stop`): before Claude finishes, if the audit finds something, it asks Claude to run the subagent, once per stop. A `PreToolUse` hook (`sync.mjs pre-pr`): blocks `gh pr create`, `git push` and the GitHub pull request tool while the audit fails |
+| `.claude/settings.json` | A `Stop` hook (`sync.mjs stop`): before Claude finishes, if the audit finds something, it asks Claude to run the subagent, once per stop. A `PreToolUse` hook (`sync.mjs pre-pr`): blocks `gh pr create` and the GitHub pull request tools while the audit fails |
 | `.github/workflows/agent-ready.yml` | On a GitHub repository: the audit on every pull request |
 
 Existing hooks in `.claude/settings.json` are kept; the agent-ready ones are added once.
@@ -155,12 +155,12 @@ repository and exits 1 when:
 
 ## Languages
 
-A site in more than one language lists them in `site.json` → `languages`, English first (`["en", "pt"]`): the default copies are always in English, translated if the site isn't. Without `languages`, the site has one language (`language`, default `en`) and nothing below applies.
+A site in more than one language lists them in `site.json` → `languages`, English first (`["en", "pt"]`). The English copies come from the site's English pages; each further language's copies hold the site's own words in that language. Nothing is translated on a multilingual site. Without `languages`, the site has one language (`language`, default `en`) and nothing below applies: a site in one language other than English gets English copies that translate its pages (`writing.md`, "Language").
 
 - **Source.** The English pages stay in `agent-ready/pages/`. Each further language has its own folder, `agent-ready/pages/<lang>/`. **A page and its translation share a file name** (`pages/about.md` and `pages/pt/about.md`); each has its own `path`, the real URL in that language (`/pt/sobre`). The home page of a further language has the language's prefix as its path (`path: /pt`).
 - **Per-language values.** `i18n.<lang>` overrides any `site.json` text for that language: `headline`, `description`, `location`, `readingPreference`, `contactTitle`, `contactText`, `contact`, `agentsPage`, `sections`. Anything it leaves out comes from the default language. Three keys are only for `i18n`: `prefix` (default `/<lang>`, for example `/pt`: where that language's generated files go), `home` (default: the prefix, see below) and `languageName` (default: the language's own name, "Português").
 - **Files.** Each language has its own `llms.txt`, `llm.md`, `llms-full.txt` and `/agents` under its prefix, with only its own pages. **One `llms.txt` per language**, never one file with every language: agents read `/llms.txt` first, so it stays short, in one language, and links the others in a `## Languages` section.
-- **Untranslated pages.** A page the site doesn't show in a further language is listed in that language's `llms.txt` under `## Not translated`, linked to the copy in the language it exists in. **Never translate a page into a further language**: its copies hold only the site's own words in that language. English is the one translation, in `agent-ready/pages/`.
+- **Untranslated pages.** A page that exists in only some of the site's languages gets copies only in those languages. Each other language's `llms.txt` lists it under `## Not translated`, linked to a copy in a language it exists in. This works both ways: a page only in Portuguese has no English copy, and the English `llms.txt` links its Portuguese one. **Never translate a page on a multilingual site.**
 - **Section titles.** The sections the generator adds (`Pages`, `Not translated`, `Languages`, `Files`, and `Contact` when `contactTitle` is not set) are written in the language of the file, for en, pt, pt-BR, es, fr, de, it and nl; any other language gets English. A site sets its own with `sections`: `{ "pages": "…", "notTranslated": "…", "languages": "…", "files": "…" }` (top level for the default language, `i18n.<lang>.sections` for the others). Page sections (`section`, a collection's `section`) are written as the site names them.
 - **A root in another language.** If the site's root is in another language and its English version lives under a path (`/` and `/sobre` in Portuguese, `/en` and `/en/about` in English), each language says where its home is: `"home": "/en"` at the top level for English, `"i18n": { "pt": { "home": "/" } }` for Portuguese. The English pages keep their real URLs (`path: /en`, `path: /en/about`) and take English copy names with `markdown` (`markdown: /about` → `/about.md`); the Portuguese pages keep theirs (`path: /`, `path: /sobre` → `/sobre.md`). The generated files don't move: English at the root (`/llms.txt`, `/agents`), Portuguese under its prefix (`/pt/llms.txt`, `/pt/agents`). `markdown-map.json` sends `/` to `/pt/llms.txt` and `/en` to `/llms.txt`, and each `/agents` page links back to its own home. A site with no English version at all doesn't use `languages`: it is one language, translated into English (see `writing.md`, "Language").
 - **Page copies** link their translations in an `Also in:` line under `Source:`.
@@ -187,7 +187,7 @@ A site in more than one language lists them in `site.json` → `languages`, Engl
 
 ## Consistency (`check`)
 
-`check` compares the files with the live HTML and warns (`warn mismatch: …`) where they disagree. The comparison is exact, after ignoring case, spacing, typographic quotes and Markdown marks, so a copy that says the same thing in other words passes. It looks at:
+`check` compares the files with the live HTML and warns (`warn mismatch: …`) where they disagree. The comparison is exact, after ignoring case, spacing, typographic quotes and Markdown marks, so a copy that says the same thing in other words passes. On a site in one language other than English (`<html lang>` not English, no `languages`), the copies translate the pages, so their wording is not compared; names and contact details still are. It looks at:
 
 - the name and the headline from `profile.json`, on the home page;
 - each contact value, on at least one checked page (contact must already be public);

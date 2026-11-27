@@ -18,7 +18,7 @@ Every other page:
 alternates: { types: { "text/markdown": "/about.md" } },
 ```
 Next replaces `alternates` as a whole, so if the page or a layout above it already sets a canonical (or `languages`), repeat it in the same object: `alternates: { canonical: "/about", types: { … } }`. Don't add a canonical the site didn't have. Relative URLs need `metadataBase` in the root layout; if it is missing, add it with the production URL.
-For dynamic routes (`[slug]`), build the path in `generateMetadata`: `` `/work/${slug}.md` ``. Each slug needs its own `agent-ready/pages/*.md`. If a page's URL is not in English, its copy has an English name (`/sobre` → `/about.md`): take the href from `agent-ready/markdown-map.json` instead of adding `.md` to the path.
+For dynamic routes (`[slug]`), build the path in `generateMetadata`: `` `/work/${slug}.md` ``. Their copies come from a collection ("Collections" in `../spec.md`), or, for one or two pages, a hand-written `agent-ready/pages/*.md` each. If a page's URL is not in English, its copy has an English name (`/sobre` → `/about.md`): take the href from `agent-ready/markdown-map.json` instead of adding `.md` to the path.
 
 ## Hidden hint
 The first child of `<body>` in `app/layout.tsx`, using the site's `sr-only` class if it has one:
