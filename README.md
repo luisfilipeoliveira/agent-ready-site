@@ -12,11 +12,7 @@ Make your website readable by AI agents, generated from the site's own content.
 More and more, the first reader of a website is an AI assistant working for someone else. Agents that
 read rendered layouts guess: they miss text in carousels, misread cards, and invent what isn't there.
 `agent-ready-site` gives them the same content as your pages, in plain Markdown, and shows people that
-it's there with a small link in the footer:
-
-> Hey agent: **examplebikes.md**
-
-<img src="docs/footer-link.png" alt="A placeholder home page whose footer reads: Example Bikes, 1 Example Street, Sample Town; hello@example.com; Hey agent: examplebikes.md" width="600">
+it's there with a small link in the footer.
 
 ## Get started in 2 minutes
 
@@ -39,7 +35,8 @@ name to show, a short handle for the footer link, and your site's address.
 - **AI assistants read your site correctly.** Every page has a clean copy they can quote, instead of guessing from
   the layout.
 - **One small visible change:** the "Hey agent" link in your footer, in your site's own style.
-- **A page for people** at `/agents` that shows what AI agents read on your site.
+- **A page for people** at `/agents`. AI agents don't need it: it's where the footer link takes your visitors, so
+  anyone can see exactly what AI assistants read on your site.
 
 ## Keeping it up to date
 
@@ -69,20 +66,36 @@ it themselves.
 | URL | What it is |
 | --- | --- |
 | `/llms.txt` (and `/llm.md`) | The index, in the [llms.txt](https://llmstxt.org) format: your home page, links to every page copy, and contact |
-| `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md`. Always in English: a page in another language is translated, and its copy gets an English name (`/sobre` → `/about.md`) |
+| `/about.md`, `/work/case.md`, … | A Markdown copy of every public page, at the page's URL + `.md`. In English at the root; on a multilingual site, each further language also gets copies in its own words (`/pt/sobre.md`). A page whose URL isn't in English gets an English copy name (`/sobre` → `/about.md`) |
 | `/llms-full.txt` | Everything in one file |
 | `/profile.json` | Name, headline, pages and contact as JSON |
-| `/agents` | A page for people: the files, shown as a terminal session in a code-editor window that types itself out (no-JS and reduced-motion fallbacks, light and dark) |
+| `/agents` | A page for people that shows what agents read (see below) |
 
 #### The /agents page
+
+Agents read `/llms.txt` and the `.md` copies. `/agents` is not for them: it is the human view of the same files, the
+page the "Hey agent" footer link opens. Anyone can see there exactly what an AI assistant receives from the site.
+
+It shows the files as a terminal session in a code-editor window, in four steps:
+
+1. `whoami`: the page's title and lead (`agentsPage` in `site.json`).
+2. `cat README`: the site's reading preference, a note that what follows is the full set of files an agent receives,
+   unedited, and the `updated` date.
+3. `ls -lh`: every generated file with its size, a link to it and one line on what it is.
+4. `cat llms.txt`: the index, exactly as agents get it.
+
+The header shows the site's avatar (or its initial) and `<handle>.md`, with a link back to the site. The session
+types itself out; without JavaScript, or with reduced motion, it shows all at once. Light and dark follow the
+visitor's setting. A multilingual site gets one page per language (`/pt/agents`), each linking back to its own home.
+The page also links its `llms.txt` as a Markdown alternate, so an agent that lands on it is sent to the files.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/agents-dark.png">
   <img src="docs/agents-light.png" alt="The /agents page: an editor window with numbered lines and a shell session that runs whoami, cat README, ls -lh with the generated files and their sizes, and cat llms.txt" width="720">
 </picture>
 
-Screenshots of the placeholder example with the default tokens. A site can swap in its own colours, radius and
-fonts through `theme` in `agent-ready/site.json`.
+Screenshots of the placeholder example with the default tokens. A site can use its own colours, radius and fonts
+through `theme` in `agent-ready/site.json`, so the page looks like part of the site.
 
 It also points agents to these files:
 - a `<link rel="alternate" type="text/markdown">` on every page;
@@ -165,17 +178,6 @@ agent-ready/
 public/            llms.txt, llm.md, llms-full.txt, profile.json, the .md copies, agents/index.html
                    (static/ in SvelteKit, next to index.html on a plain HTML site)
 ```
-
-### How the updates work
-
-`init` also installs a sync in your repository, so the copies follow the site in every language without you
-thinking about it:
-
-- **When Claude Code changes your site**, a hook checks before it finishes. If a page changed and its copy didn't, or
-  a page was added or removed, the `agent-ready-sync` subagent updates the copies (English and each language), builds
-  and checks again.
-- **Before a pull request**, a hook runs the audit and blocks the PR until the copies match.
-- **On GitHub**, a workflow runs the same audit on every pull request, whoever opened it.
 
 Each copy names the file its words come from (`source: app/about/page.tsx`), which is how a change is noticed. To run
 the audit yourself:
