@@ -18,17 +18,27 @@ it's there with a small link in the footer.
 
 You don't need to know how to code. [Claude Code](https://claude.com/claude-code) does the work for you.
 
-1. **Open your website's project in Claude Code** (the desktop app or the terminal).
+1. **Open your website's project in Claude Code** (the desktop app or the terminal). Open the folder of your site,
+   not the folder of agent-ready-site.
 2. **Add agent-ready-site.** Type these two lines in Claude Code, one at a time:
    ```text
    /plugin marketplace add luisfilipeoliveira/agent-ready-site
    /plugin install agent-ready-site@agent-ready-site
    ```
+   Added it before? Get the latest version first:
+   ```text
+   /plugin marketplace update agent-ready-site
+   ```
 3. **Type `/agent-ready`**, or just say *"Make this site readable by AI agents"*.
 
-Claude reads your pages, writes a copy of each one for AI agents (in every language your site has), adds a small
-"Hey agent" link to your footer and checks that it all works. It only asks for what it can't find on your site: the
-name to show, a short handle for the footer link, and your site's address.
+What happens next:
+
+- Claude shows you the pages it found, in every language your site has, before it writes anything.
+- It only asks for what it can't find on your site: the name to show, a short handle for the footer link (for
+  example `examplebikes.md`) and your site's address.
+- It writes a copy of each page for AI agents, adds the "Hey agent" link to your footer and checks that it all works.
+- It ends with a short summary in plain words. It saves the work in your project, and asks before publishing it or
+  opening a pull request.
 
 ## What you get
 
