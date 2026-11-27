@@ -6,7 +6,7 @@
  *   node agent-ready/sync.mjs audit     list every copy that no longer follows the site; exit 1 if any
  *   node agent-ready/sync.mjs stop      Claude Code Stop hook: when the audit finds something, ask Claude to
  *                                       run the agent-ready-sync subagent before it finishes
- *   node agent-ready/sync.mjs pre-pr    Claude Code PreToolUse hook: block a pull request (or a push) while
+ *   node agent-ready/sync.mjs pre-pr    Claude Code PreToolUse hook: block opening a pull request while
  *                                       the audit finds something
  *
  * The audit reads only the repository: it needs no network and runs the same in CI.
@@ -18,7 +18,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 // In a site this file sits next to build.mjs (the generator); in this repository, next to generator.mjs.
 const generator = await import(pathToFileURL(existsSync(join(HERE, "build.mjs")) ? join(HERE, "build.mjs") : join(HERE, "generator.mjs")).href);
-const { loadContent, pageLabel, renderFiles, routeFiles, safeTarget, syncStatus } = generator;
+const { isMain, loadContent, pageLabel, renderFiles, routeFiles, safeTarget, sameLines, syncStatus } = generator;
 
 /**
  * Everything that is out of step, as plain sentences. Each names the file to look at and what to do.
@@ -26,7 +26,14 @@ const { loadContent, pageLabel, renderFiles, routeFiles, safeTarget, syncStatus 
  * false when the site has no agent-ready/site.json yet.
  */
 export function audit(root) {
-  root = resolve(root);
+  try {
+    return runAudit(resolve(root));
+  } catch (error) {
+    return { problems: [`The audit couldn't run: ${error.message}`], summary: "The copies for AI agents couldn't be checked.", configured: true };
+  }
+}
+
+function runAudit(root) {
   if (!existsSync(join(root, "agent-ready", "site.json"))) return { problems: [], configured: false };
   let content;
   try {
@@ -39,6 +46,10 @@ export function audit(root) {
 
   // 1. Copies against their sources, in every language.
   const status = syncStatus(root, content);
+  if (status.lockError) {
+    pages.push("the record of past checks");
+    problems.push(`${status.lockError.replace(/ it was started again\.$/, "")} Run node agent-ready/build.mjs to start it again (after a merge conflict, keep either side: the build rewrites it).`);
+  }
   for (const p of status.pages) {
     if (["stale", "missing", "untracked"].includes(p.state)) pages.push(pageLabel(p.page, content.multi));
     if (p.state === "stale") problems.push(`${p.key} is out of date: ${p.changed.join(", ")} changed since the copy was written.`);
@@ -59,7 +70,7 @@ export function audit(root) {
   const stale = [];
   for (const [path, text] of renderFiles(content)) {
     const target = safeTarget(outDir, path);
-    if (target && existsSync(target) && readFileSync(target, "utf8") !== text) stale.push(path);
+    if (target && existsSync(target) && sameLines(readFileSync(target, "utf8")) !== text) stale.push(path);
   }
   if (stale.length && pages.push("the files built from them")) problems.push(`Generated files are out of date (${stale.slice(0, 5).join(", ")}${stale.length > 5 ? `, and ${stale.length - 5} more` : ""}): run node agent-ready/build.mjs.`);
 
@@ -82,12 +93,13 @@ export function stopHook(root, input = {}) {
   return { decision: "block", reason: `agent-ready: ${summary}\n- ${problems.join("\n- ")}\n\n${SYNC_ASK}` };
 }
 
-const PR_COMMAND = /\bgh\s+pr\s+create\b|\bgit\s+push\b/;
+// `gh pr create` as a command of its own: at the start, or after &&, ||, ;, | or a subshell's (.
+const PR_COMMAND = /(^|[;&|(]\s*)gh\s+pr\s+create\b/;
 
 /** PreToolUse hook: the message to block with, or null to let the call through. */
 export function prePrHook(root, input = {}) {
   const tool = String(input.tool_name ?? "");
-  const isPr = /create_pull_request$/.test(tool) || (tool === "Bash" && PR_COMMAND.test(String(input.tool_input?.command ?? "")));
+  const isPr = /create_pull_request$/.test(tool) || (tool === "Bash" && PR_COMMAND.test(String(input.tool_input?.command ?? "").trim()));
   if (!isPr) return null;
   const { problems, summary } = audit(root);
   if (!problems.length) return null;
@@ -106,7 +118,7 @@ async function readStdin() {
 }
 
 // Run directly: `node agent-ready/sync.mjs <audit|stop|pre-pr>`
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(process.argv[1], import.meta.url)) {
   const root = process.argv[1].endsWith(join("agent-ready", "sync.mjs")) ? resolve(HERE, "..") : process.cwd();
   const mode = process.argv[2] ?? "audit";
   try {

@@ -270,8 +270,15 @@ export function checkConsistency({ profile, llms, homeHtml, copies, languageHome
     return;
   }
 
+  // A site in one language other than English has English copies that translate its pages: their wording can't be
+  // compared word for word with the page. Names and contact details still can.
+  const pageLang = (html) => /<html\b[^>]*\blang=["']([^"']+)["']/i.exec(html)?.[1] ?? "";
+  const translated = (html) => !profile.languages && Boolean(pageLang(html)) && !/^en(-|$)/i.test(pageLang(html));
+  const translatedLangs = new Set();
+  const skip = (html) => translated(html) && (translatedLangs.add(pageLang(html)), true);
+
   if (profile.name && !homeText.includes(normalise(profile.name))) flag("name", `"${profile.name}" (profile.json) is not on the home page`);
-  if (profile.headline && !homeText.includes(markdownText(profile.headline))) flag("headline", `"${profile.headline}" (profile.json) is not on the home page; it should be its main line, verbatim`);
+  if (profile.headline && !skip(homeHtml) && !homeText.includes(markdownText(profile.headline))) flag("headline", `"${profile.headline}" (profile.json) is not on the home page; it should be its main line, verbatim`);
 
   // Contact: only details the site already shows publicly (writing.md, Privacy).
   for (const [label, value] of Object.entries(profile.contact ?? {})) {
@@ -284,7 +291,7 @@ export function checkConsistency({ profile, llms, homeHtml, copies, languageHome
   // Each copy: its title, summary and headings must be on the HTML page it copies.
   for (const [page, copy] of copies) {
     const text = htmlText(copy.html);
-    if (text.length < 40) continue;
+    if (text.length < 40 || skip(copy.html)) continue;
     const missing = [];
     if (page.title && !text.includes(markdownText(page.title))) missing.push(`title "${page.title}"`);
     if (page.summary && !text.includes(markdownText(page.summary)) && !metaDescription(copy.html).includes(markdownText(page.summary)))
@@ -295,7 +302,7 @@ export function checkConsistency({ profile, llms, homeHtml, copies, languageHome
 
   // The home page's own text in llms.txt, which ends where the generated sections start (page sections included).
   const stopAt = [...GENERATED_SECTIONS, ...new Set((profile.pages ?? []).map((p) => p.section).filter(Boolean))];
-  if (llms) {
+  if (llms && !skip(homeHtml)) {
     const missing = headings(withoutContact(llms, profile.contact), { stopAt }).filter((h) => !homeText.includes(markdownText(h)));
     if (missing.length) flag("/llms.txt", `has heading${missing.length === 1 ? "" : "s"} ${missing.map((h) => `"${h}"`).join(", ")}, not on the home page`);
   }
@@ -317,7 +324,9 @@ export function checkConsistency({ profile, llms, homeHtml, copies, languageHome
     else if (days > STALE_DAYS) flag("updated", `${profile.updated} is ${days} days ago; check the copies still match the site, then update it`);
   }
 
-  if (!found) pass("the copies, profile.json and the live pages agree (name, headline, contact, titles, summaries, headings, JSON-LD)");
+  if (translatedLangs.size)
+    pass(`the copies are English translations of pages in ${[...translatedLangs].join(", ")}: their wording is not compared word for word (names and contact details are)`);
+  if (!found) pass("the copies, profile.json and the live pages agree (name, headline, contact, titles, summaries, headings)");
 }
 
 // ---------- AI crawlers ----------

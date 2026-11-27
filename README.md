@@ -7,28 +7,41 @@
 
 **Live demo:** [a placeholder site made agent-ready](https://luisfilipeoliveira.github.io/agent-ready-site/demo/), with its [/agents page](https://luisfilipeoliveira.github.io/agent-ready-site/demo/agents/) and [llms.txt](https://luisfilipeoliveira.github.io/agent-ready-site/demo/llms.txt).
 
-Make your website readable by AI agents, generated from the site's own content.
+Make your website readable by AI agents, from the site's own content.
 
-More and more, the first reader of a website is an AI assistant working for someone else. Agents that
-read rendered layouts guess: they miss text in carousels, misread cards, and invent what isn't there.
-`agent-ready-site` gives them the same content as your pages, in plain Markdown, and shows people that
-it's there with a small link in the footer.
+More and more, the first reader of a website is an AI assistant working for someone else. Assistants that read
+the rendered layout guess: they miss text in carousels, misread cards and invent what isn't there.
+
+`agent-ready-site` gives them the words of every page as plain Markdown, in every language your site has, and keeps
+those copies up to date when the site changes. Nothing is invented: every word comes from your pages. It adds a
+small "Hey agent" link to your footer and an `/agents` page, so people can see what AI assistants read. You set it
+up in Claude Code in a couple of minutes, without writing code.
 
 ## Get started in 2 minutes
 
 You don't need to know how to code. [Claude Code](https://claude.com/claude-code) does the work for you.
 
-1. **Open your website's project in Claude Code** (the desktop app or the terminal).
+1. **Open your website's project in Claude Code** (the desktop app or the terminal). Open the folder of your site,
+   not the folder of agent-ready-site.
 2. **Add agent-ready-site.** Type these two lines in Claude Code, one at a time:
    ```text
    /plugin marketplace add luisfilipeoliveira/agent-ready-site
    /plugin install agent-ready-site@agent-ready-site
    ```
+   Added it before? Get the latest version first:
+   ```text
+   /plugin marketplace update agent-ready-site
+   ```
 3. **Type `/agent-ready`**, or just say *"Make this site readable by AI agents"*.
 
-Claude reads your pages, writes a copy of each one for AI agents (in every language your site has), adds a small
-"Hey agent" link to your footer and checks that it all works. It only asks for what it can't find on your site: the
-name to show, a short handle for the footer link, and your site's address.
+What happens next:
+
+- Claude shows you the pages it found, in every language your site has, before it writes anything.
+- It only asks for what it can't find on your site: the name to show, a short handle for the footer link (for
+  example `examplebikes.md`) and your site's address.
+- It writes a copy of each page for AI agents, adds the "Hey agent" link to your footer and checks that it all works.
+- It ends with a short summary in plain words. It saves the work in your project, and asks before publishing it or
+  opening a pull request.
 
 ## What you get
 
@@ -71,6 +84,12 @@ it themselves.
 | `/profile.json` | Name, headline, pages and contact as JSON |
 | `/agents` | A page for people that shows what agents read (see below) |
 
+On every page, agents are pointed to these files by:
+- a `<link rel="alternate" type="text/markdown">`;
+- a hidden first line in `<body>`;
+- `Accept: text/markdown` negotiation where your host allows it;
+- the **"Hey agent: `<handle>`.md"** footer link.
+
 #### The /agents page
 
 Agents read `/llms.txt` and the `.md` copies. `/agents` is not for them: it is the human view of the same files, the
@@ -96,12 +115,6 @@ The page also links its `llms.txt` as a Markdown alternate, so an agent that lan
 
 Screenshots of the placeholder example with the default tokens. A site can use its own colours, radius and fonts
 through `theme` in `agent-ready/site.json`, so the page looks like part of the site.
-
-It also points agents to these files:
-- a `<link rel="alternate" type="text/markdown">` on every page;
-- a hidden first line in `<body>`;
-- `Accept: text/markdown` negotiation where your host allows it;
-- the **"Hey agent: `<handle>`.md"** footer link.
 
 The content comes only from your site. The agent reads your pages (or the data files behind them) and writes
 one Markdown file per page in `agent-ready/pages/`. A tiny generator with no dependencies turns those files into
@@ -139,8 +152,8 @@ Without a clone, the same CLI is on npm: `npx agent-ready-site` does the same as
 
 A site in several languages lists them in `site.json`, English first (`"languages": ["en", "pt"]`). The English
 copies stay in `agent-ready/pages/`; each further language keeps the site's own words in `agent-ready/pages/<lang>/`
-and gets its own `llms.txt` and `/agents` under its prefix. Pages the site doesn't show in that language are
-linked in the language they exist in, never translated. A site whose root is in another language, with English
+and gets its own `llms.txt` and `/agents` under its prefix. Nothing is translated: a page that exists in only some
+languages gets copies only in those, and the other languages' `llms.txt` link to it under "Not translated". A site whose root is in another language, with English
 under a path (`/` in Portuguese, `/en` in English), sets `"home": "/en"` and `i18n.pt.home: "/"`; `/llms.txt` stays
 the English one.
 

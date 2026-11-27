@@ -55,15 +55,20 @@ function mergeSettings(path, log) {
   }
   settings.hooks ??= {};
   const added = [];
+  const updated = [];
   for (const [event, groups] of Object.entries(ours.hooks)) {
-    const list = (settings.hooks[event] ??= []);
-    if (JSON.stringify(list).includes("agent-ready/sync.mjs")) continue;
-    list.push(...groups);
-    added.push(event);
+    const list = settings.hooks[event] ?? [];
+    // Our own groups are replaced with the current ones (an older init may have written others); the rest stay.
+    const others = list.filter((g) => !JSON.stringify(g).includes("agent-ready/sync.mjs"));
+    if (others.length === list.length) added.push(event);
+    else if (JSON.stringify(list.slice(others.length)) !== JSON.stringify(groups) || list.length - others.length !== groups.length) updated.push(event);
+    settings.hooks[event] = [...others, ...groups];
   }
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(settings, null, 2) + "\n");
-  log.push(added.length ? `.claude/settings.json: added the ${added.join(" and ")} hooks (sync before finishing, audit before a pull request).` : ".claude/settings.json: the agent-ready hooks were already there.");
+  if (added.length) log.push(`.claude/settings.json: added the ${added.join(" and ")} hooks (sync before finishing, audit before a pull request).`);
+  if (updated.length) log.push(`.claude/settings.json: updated the agent-ready ${updated.join(" and ")} hooks.`);
+  if (!added.length && !updated.length) log.push(".claude/settings.json: the agent-ready hooks were already there.");
 }
 
 /** A GitHub remote in .git/config: the repository runs GitHub Actions on its pull requests. */

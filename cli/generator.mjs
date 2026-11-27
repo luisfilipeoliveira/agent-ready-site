@@ -26,7 +26,7 @@
  *
  * Every word comes from site.json and the page files, which hold only what the site itself says.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -53,11 +53,13 @@ export function parseFrontmatter(text) {
  */
 export function parseSource(value, where) {
   if (value == null || value === "") return [];
-  const list = String(value).replace(/^\[|\]$/g, "").split(",").map((s) => s.trim().replace(/^(['"])(.*)\1$/, "$2")).filter(Boolean);
+  const text = String(value).trim().replace(/^\[|\]$/g, "");
+  // Split on commas outside quotes: "a, b.html" (quoted) is one path.
+  const list = [...text.matchAll(/\s*(?:"([^"]*)"|'([^']*)'|([^,]+))\s*(?:,|$)/g)].map((m) => (m[1] ?? m[2] ?? m[3] ?? "").trim()).filter(Boolean);
   for (const path of list)
     if (path.startsWith("/") || /^[A-Za-z]:/.test(path) || path.split(/[\\/]/).includes(".."))
       throw new Error(`${where}: source "${path}" must be a path inside the site's folder, like app/about/page.tsx`);
-  return list.map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""));
+  return list.map((p) => p.replace(/\\/g, "/").replace(/^(\.\/)+/, "").replace(/\/{2,}/g, "/").replace(/\/\.\//g, "/"));
 }
 
 const LANGUAGE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
@@ -67,7 +69,7 @@ function readPages(dir, label) {
   return readdirSync(dir)
     .filter((file) => file.endsWith(".md"))
     .map((file) => {
-      const { data, body } = parseFrontmatter(readFileSync(join(dir, file), "utf8"));
+      const { data, body } = parseFrontmatter(sameLines(readFileSync(join(dir, file), "utf8")));
       if (!data.path || !data.title) throw new Error(`${label}/${file} needs "path" and "title" in its frontmatter.`);
       const path = data.path === "/" ? "/" : "/" + String(data.path).replace(/^\/+|\/+$/g, "");
       // The path becomes a file name: plain URL characters only, no "." or ".." segments.
@@ -145,7 +147,7 @@ function loadCollection(root, collection, index, where) {
   const data = JSON.parse(readFileSync(inside(collection.source, "source"), "utf8"));
   const items = Array.isArray(data) ? data : data?.items;
   if (!Array.isArray(items)) throw new Error(`${where}: source must be a JSON array, or an object with an "items" array.`);
-  const template = readFileSync(inside(collection.template, "template"), "utf8").trim();
+  const template = sameLines(readFileSync(inside(collection.template, "template"), "utf8")).trim();
   const order = collection.order ?? 100;
   const clean = (raw) => (raw === "/" ? "/" : "/" + String(raw).replace(/^\/+|\/+$/g, ""));
   return items.map((item, i) => {
@@ -745,6 +747,16 @@ a:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:c
 
 // ---------- write ----------
 
+/** Whether this file is the script Node was started with, also when the path to it goes through a symlink. */
+export function isMain(argv1, moduleUrl) {
+  if (!argv1) return false;
+  try {
+    return realpathSync(argv1) === realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return resolve(argv1) === fileURLToPath(moduleUrl);
+  }
+}
+
 /** The absolute file for a site path, or null if it would land outside outDir. */
 export function safeTarget(outDir, path) {
   if (typeof path !== "string" || !path.startsWith("/")) return null;
@@ -769,14 +781,17 @@ export function renderFiles(content) {
   return files;
 }
 
-const SKIP_DIRS = new Set(["node_modules", ".git", ".next", ".astro", ".svelte-kit", "dist", "build", "out", ".vercel", ".netlify", "agent-ready"]);
+// Folders that never hold pages. Dot-folders (.git, .next, …) are skipped too. At the site's root only, also the
+// usual build and tool output, so a real route named /build or /out inside a pages folder still counts.
+const SKIP_ALWAYS = new Set(["node_modules"]);
+const SKIP_AT_ROOT = new Set(["dist", "build", "out", "coverage", "agent-ready"]);
 
 /** Files under `dir` (relative to root, "/"-separated) whose relative path matches `test`. */
 function walk(root, dir, test, out = []) {
   const base = join(root, dir);
   if (!existsSync(base)) return out;
   for (const entry of readdirSync(base, { withFileTypes: true })) {
-    if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) continue;
+    if (entry.name.startsWith(".") || SKIP_ALWAYS.has(entry.name) || (!dir && SKIP_AT_ROOT.has(entry.name))) continue;
     const rel = dir ? `${dir}/${entry.name}` : entry.name;
     if (entry.isDirectory()) walk(root, rel, test, out);
     else if (test(rel)) out.push(rel);
@@ -786,40 +801,59 @@ function walk(root, dir, test, out = []) {
 
 /**
  * The files that define the site's pages, one per route, relative to the site's root: what a page's
- * `source` should name. Dynamic routes ([slug]) are left out (collections cover them), and so are error,
- * API and framework files. Vite and other client-routed apps have no file per route: an empty list.
+ * `source` should name. Dynamic routes ([slug]) are left out (collections cover them), and so are each
+ * framework's private, error and API files. Vite and other client-routed apps have no file per route: an empty list.
  */
 export function routeFiles(root, { framework, outDir = "." } = {}) {
   const dynamic = (rel) => /\[[^\]]*\]/.test(rel);
-  const notPage = (rel) => /(^|\/)(404|500|_error|_app|_document|not-found|error|loading|layout|template)\.[a-z]+$/.test(rel) || /(^|\/)api\//.test(rel);
-  const keep = (rel) => !dynamic(rel) && !notPage(rel);
+  const segments = (rel, base) => rel.slice(base.length + 1).split("/");
+  const under = (base, test) => walk(root, base, test).filter((rel) => !dynamic(rel)).map((rel) => ({ rel, parts: segments(rel, base) }));
+  let found = [];
   if (framework === "nextjs") {
-    const app = (rel) => /(^|\/)page\.(tsx|jsx|ts|js|mdx|md)$/.test(rel);
-    const pages = (rel) => /\.(tsx|jsx|ts|js|mdx|md)$/.test(rel);
-    return [
-      ...walk(root, "app", app), ...walk(root, "src/app", app),
-      ...walk(root, "pages", pages), ...walk(root, "src/pages", pages),
-    ].filter(keep).sort();
+    for (const base of ["app", "src/app"]) {
+      // App Router: page.* files; folders starting with _ are private, with @ are parallel-route slots.
+      found.push(...under(base, (rel) => /(^|\/)page\.(tsx|jsx|ts|js|mdx|md)$/.test(rel)).filter(({ parts }) => !parts.some((p) => /^[_@]/.test(p))));
+    }
+    for (const base of ["pages", "src/pages"]) {
+      // Pages Router: every file is a route, except _app/_document/_error, the error pages and pages/api.
+      found.push(...under(base, (rel) => /\.(tsx|jsx|ts|js|mdx|md)$/.test(rel)).filter(({ parts }) => !/^_/.test(parts.at(-1)) && parts[0] !== "api" && !(parts.length === 1 && /^(404|500)\./.test(parts[0]))));
+    }
+  } else if (framework === "astro") {
+    // Files and folders starting with _ are not routes; 404 and 500 at the top are error pages.
+    found = under("src/pages", (rel) => /\.(astro|md|mdx|html)$/.test(rel)).filter(({ parts }) => !parts.some((p) => p.startsWith("_")) && !(parts.length === 1 && /^(404|500)\./.test(parts[0])));
+  } else if (framework === "sveltekit") {
+    found = under("src/routes", (rel) => /(^|\/)\+page\.svelte$/.test(rel));
+  } else if (framework === "static") {
+    const base = outDir === "." ? "" : outDir;
+    // The /agents pages are generated; 404.html and 500.html at the top are error pages.
+    found = walk(root, base, (rel) => rel.endsWith(".html"))
+      .filter((rel) => !dynamic(rel))
+      .map((rel) => ({ rel, parts: (base ? rel.slice(base.length + 1) : rel).split("/") }))
+      .filter(({ rel, parts }) => !/(^|\/)agents\/index\.html$/.test(rel) && !(parts.length === 1 && /^(404|500)\.html$/.test(parts[0])));
   }
-  if (framework === "astro") return walk(root, "src/pages", (rel) => /\.(astro|md|mdx|html)$/.test(rel)).filter(keep).sort();
-  if (framework === "sveltekit") return walk(root, "src/routes", (rel) => /(^|\/)\+page\.svelte$/.test(rel)).filter(keep).sort();
-  if (framework === "static") {
-    const generated = (rel) => /(^|\/)agents\/index\.html$/.test(rel);
-    return walk(root, outDir === "." ? "" : outDir, (rel) => rel.endsWith(".html") && !generated(rel)).filter(keep).sort();
-  }
-  return [];
+  return found.map((f) => f.rel).sort();
 }
 
 // ---------- sync: is each copy still in step with the files its words come from? ----------
 
 const LOCK = "sync-lock.json";
+/** Text with Windows line endings made plain, so a checkout with CRLF compares equal to one with LF. */
+export const sameLines = (text) => text.replace(/\r\n/g, "\n");
+
 const hashOf = (text) => {
   // FNV-1a, 64-bit: enough to notice a change, and no dependency on node:crypto's availability.
   let h = 0xcbf29ce484222325n;
-  for (const byte of Buffer.from(text, "utf8")) h = BigInt.asUintN(64, (h ^ BigInt(byte)) * 0x100000001b3n);
+  for (const byte of Buffer.from(sameLines(text), "utf8")) h = BigInt.asUintN(64, (h ^ BigInt(byte)) * 0x100000001b3n);
   return h.toString(16).padStart(16, "0");
 };
-const readHash = (file) => (existsSync(file) ? hashOf(readFileSync(file, "utf8")) : null);
+/** The hash of a file, or null if it doesn't exist or isn't a file (a folder named as a source counts as missing). */
+const readHash = (file) => {
+  try {
+    return statSync(file).isFile() ? hashOf(readFileSync(file, "utf8")) : null;
+  } catch {
+    return null;
+  }
+};
 
 /** A page as a person names it: its title, and its language when the site has several ("Sobre" (Português)). */
 export function pageLabel(page, multi = true) {
@@ -843,7 +877,16 @@ export function trackedPages(content) {
 export function syncStatus(root, content, { accept = false } = {}) {
   root = resolve(root);
   const lockPath = join(root, "agent-ready", LOCK);
-  const previous = existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, "utf8")) : {};
+  // A lock that doesn't parse (a merge conflict, a bad edit) is treated as empty: every page starts again as "new".
+  let previous = {};
+  let lockError = null;
+  if (existsSync(lockPath)) {
+    try {
+      previous = JSON.parse(readFileSync(lockPath, "utf8")) ?? {};
+    } catch (error) {
+      lockError = `agent-ready/${LOCK} could not be read (${error.message}); it was started again.`;
+    }
+  }
   const before = previous.pages ?? {};
   const lock = { pages: {} };
   const pages = [];
@@ -867,7 +910,7 @@ export function syncStatus(root, content, { accept = false } = {}) {
     // A stale or broken page keeps its old record, so it is reported until its copy changes or it is accepted.
     lock.pages[key] = (state === "stale" || state === "missing") && !accept ? old ?? { copy, sources } : { copy, sources };
   }
-  return { pages, lock, lockPath };
+  return { pages, lock, lockPath, lockError };
 }
 
 export function build(root = process.cwd(), { accept = false, log = console.warn } = {}) {
@@ -894,22 +937,27 @@ export function build(root = process.cwd(), { accept = false, log = console.warn
   writeFileSync(ledgerPath, JSON.stringify([...files.keys()], null, 2) + "\n");
   writeFileSync(join(root, "agent-ready", "markdown-map.json"), JSON.stringify(buildMarkdownMap(content), null, 2) + "\n");
 
-  // Copies that no longer follow their source: a warning, never a failure.
-  const status = syncStatus(root, content, { accept });
+  // Copies that no longer follow their source: a warning, never a failure of the site's build.
   const warnings = [];
-  for (const p of status.pages) {
-    if (p.state === "stale" && !accept)
-      warnings.push(`the page ${pageLabel(p.page)} changed and its copy for AI agents didn't. Ask Claude to "update agent-ready". (${p.key}; ${p.changed.join(", ")} changed)`);
-    if (p.state === "missing")
-      warnings.push(`the page ${pageLabel(p.page)} was removed or moved, but its copy for AI agents is still there. Ask Claude to "update agent-ready". (${p.key}; ${p.missing.join(", ")} not found)`);
+  try {
+    const status = syncStatus(root, content, { accept });
+    if (status.lockError) warnings.push(status.lockError);
+    for (const p of status.pages) {
+      if (p.state === "stale" && !accept)
+        warnings.push(`the page ${pageLabel(p.page, content.multi)} changed and its copy for AI agents didn't. Ask Claude to "update agent-ready". (${p.key}; ${p.changed.join(", ")} changed)`);
+      if (p.state === "missing")
+        warnings.push(`the page ${pageLabel(p.page, content.multi)} was removed or moved, but its copy for AI agents is still there. Ask Claude to "update agent-ready". (${p.key}; ${p.missing.join(", ")} not found)`);
+    }
+    if (status.pages.some((p) => p.page.source.length)) writeFileSync(status.lockPath, JSON.stringify(status.lock, null, 2) + "\n");
+  } catch (error) {
+    warnings.push(`the check for copies that are out of date didn't run (${error.message}).`);
   }
-  if (status.pages.some((p) => p.page.source.length)) writeFileSync(status.lockPath, JSON.stringify(status.lock, null, 2) + "\n");
   for (const w of warnings) log(`agent-ready: ${w}`);
   return { outDir, files: [...files.keys()], content, warnings };
 }
 
 // Run directly: `node agent-ready/build.mjs`
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(process.argv[1], import.meta.url)) {
   try {
     const root = process.argv[1].endsWith(join("agent-ready", "build.mjs")) ? resolve(dirname(process.argv[1]), "..") : process.cwd();
     const { outDir, files } = build(root, { accept: process.argv.includes("--accept") });
